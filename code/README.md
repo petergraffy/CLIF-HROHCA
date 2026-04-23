@@ -42,5 +42,17 @@ This directory contains scripts for the project workflow. The general workflow c
 
    Output: [List of expected result files, e.g., statistical_results, figures, tables saved in the [`output/final`](../output/README.md) directory] 
 
+### Project-specific preprocessing
+
+For this project, create county-level heat exposure inputs before linking exposures to CLIF encounters.
+
+Current Daymet workflow:
+- [`code/daymet/01_download_daymet_county_tmax.R`](daymet/01_download_daymet_county_tmax.R): downloads Daymet V4 annual `tmax` files for 2018-2024 and aggregates daily county-level mean Tmax.
+
+Expected outputs:
+- `output/intermediate/daymet/raw`: cached annual Daymet netCDF files
+- `output/intermediate/daymet/processed/daymet_county_tmax_2018_2024.parquet`
+- `output/intermediate/daymet/processed/daymet_county_tmax_2018_2024.csv`
+
 
 
