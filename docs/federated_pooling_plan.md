@@ -7,6 +7,9 @@ Each CLIF site runs the same project scripts locally against its own CLIF tables
 Required site outputs:
 
 - `*_dlnm_site_estimates.csv`
+- `*_dlnm_curves.csv`
+- `*_dlnm_reduced_coefficients.csv`
+- `*_dlnm_reduced_vcov.csv`
 - `*_dlnm_time_sensitivity.csv`
 - `*_table1.csv`
 - `*_outcomes.csv`
@@ -70,9 +73,15 @@ This writes:
 
 - `output/final/federated_pooled/all_site_dlnm_estimates.csv`
 - `output/final/federated_pooled/pooled_dlnm_random_effects_results.csv`
+- `output/final/federated_pooled/all_site_dlnm_curves.csv`
+- `output/final/federated_pooled/pooled_dlnm_random_effects_curves.csv`
 
 ## Current Pooling Method
 
 The current pooling script uses DerSimonian-Laird random-effects meta-analysis on scalar site-level log relative risks.
 
 This is intentionally simple and easy for all sites to export. A more advanced second-stage DLNM pooling approach can be added later by exporting reduced crossbasis coefficients and variance-covariance matrices from each site.
+
+For supplemental DLNM curves, each site exports aggregate curve points with log relative risk and standard error. The coordinating-center script performs pointwise DerSimonian-Laird pooling at each temperature value. This creates a CLIF-wide curve without sharing row-level data. Temperatures outside a site's observed prediction range are not contributed by that site, so `k_sites` can vary across the curve tails.
+
+The site export also includes reduced cumulative exposure-response coefficient vectors and variance-covariance matrices from `dlnm::crossreduce()`. These files support a future multivariate meta-analysis of the DLNM curve shape, which is statistically preferable to pointwise pooling when enough sites contribute compatible model bases.

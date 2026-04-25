@@ -90,6 +90,7 @@ run_dlnm_spec <- function(
   pred_initial <- crosspred(cb_temp, fit, cen = initial_center, at = grid)
   center <- if (reference == "median") initial_center else grid[which.min(pred_initial$allRRfit)]
   pred <- crosspred(cb_temp, fit, cen = center, at = grid)
+  reduced <- crossreduce(cb_temp, fit, cen = center)
   hot_temp <- grid[which.min(abs(grid - safe_quantile(df$icu_patient_address_mean_tmax_c, 0.95)))]
   hot_index <- which.min(abs(grid - hot_temp))
   result <- data.frame(
@@ -121,11 +122,32 @@ run_dlnm_spec <- function(
     cumulative_rr = as.numeric(pred$allRRfit),
     cumulative_rr_low = as.numeric(pred$allRRlow),
     cumulative_rr_high = as.numeric(pred$allRRhigh),
+    log_rr = log(as.numeric(pred$allRRfit)),
+    log_rr_se = (log(as.numeric(pred$allRRhigh)) - log(as.numeric(pred$allRRlow))) / (2 * 1.96),
     stringsAsFactors = FALSE
   )
 
+  reduced_coef <- data.frame(
+    stratum = label,
+    model = model,
+    reference_type = reference,
+    reference_temp_c = center,
+    coefficient = names(coef(reduced)),
+    estimate = as.numeric(coef(reduced)),
+    stringsAsFactors = FALSE
+  )
+
+  reduced_vcov_matrix <- vcov(reduced)
+  reduced_vcov <- as.data.frame(as.table(reduced_vcov_matrix), stringsAsFactors = FALSE)
+  names(reduced_vcov) <- c("coefficient_row", "coefficient_col", "covariance")
+  reduced_vcov$stratum <- label
+  reduced_vcov$model <- model
+  reduced_vcov$reference_type <- reference
+  reduced_vcov$reference_temp_c <- center
+  reduced_vcov <- reduced_vcov[, c("stratum", "model", "reference_type", "reference_temp_c", "coefficient_row", "coefficient_col", "covariance")]
+
   if (return_curve) {
-    return(list(result = result, curve = curve))
+    return(list(result = result, curve = curve, reduced_coef = reduced_coef, reduced_vcov = reduced_vcov))
   }
 
   result
@@ -170,10 +192,14 @@ strata_counts <- list(
 
 results <- list()
 curve_rows <- list()
+reduced_coef_rows <- list()
+reduced_vcov_rows <- list()
 
 overall_primary <- run_dlnm_spec(model_df, "Overall", model = "primary_humidity_adjusted", reference = "median", return_curve = TRUE)
 results[["overall_primary"]] <- overall_primary$result
 curve_rows[["overall_primary"]] <- overall_primary$curve
+reduced_coef_rows[["overall_primary"]] <- overall_primary$reduced_coef
+reduced_vcov_rows[["overall_primary"]] <- overall_primary$reduced_vcov
 
 overall_pollution <- run_dlnm_spec(
   model_df,
@@ -185,10 +211,14 @@ overall_pollution <- run_dlnm_spec(
 )
 results[["overall_pollution"]] <- overall_pollution$result
 curve_rows[["overall_pollution"]] <- overall_pollution$curve
+reduced_coef_rows[["overall_pollution"]] <- overall_pollution$reduced_coef
+reduced_vcov_rows[["overall_pollution"]] <- overall_pollution$reduced_vcov
 
 overall_mrt <- run_dlnm_spec(model_df, "Overall", model = "sensitivity_mrt_reference", reference = "mrt", return_curve = TRUE)
 results[["overall_mrt"]] <- overall_mrt$result
 curve_rows[["overall_mrt"]] <- overall_mrt$curve
+reduced_coef_rows[["overall_mrt"]] <- overall_mrt$reduced_coef
+reduced_vcov_rows[["overall_mrt"]] <- overall_mrt$reduced_vcov
 
 time_sensitivity_results <- list()
 for (time_df_candidate in c(3L, 4L, 6L)) {
@@ -229,11 +259,17 @@ for (nm in c("male","female","age_lt65","age_ge65","race_black","race_nonblack")
   )
   results[[paste0(nm, "_primary")]] <- stratified$result
   curve_rows[[paste0(nm, "_primary")]] <- stratified$curve
+  reduced_coef_rows[[paste0(nm, "_primary")]] <- stratified$reduced_coef
+  reduced_vcov_rows[[paste0(nm, "_primary")]] <- stratified$reduced_vcov
 }
 
 results_df <- do.call(rbind, results)
 curves_df <- do.call(rbind, curve_rows)
+reduced_coef_df <- do.call(rbind, reduced_coef_rows)
+reduced_vcov_df <- do.call(rbind, reduced_vcov_rows)
 write.csv(results_df, file.path(output_dir, "manuscript_dlnm_results.csv"), row.names = FALSE)
 write.csv(curves_df, file.path(output_dir, "manuscript_dlnm_curves.csv"), row.names = FALSE)
+write.csv(reduced_coef_df, file.path(output_dir, "manuscript_dlnm_reduced_coefficients.csv"), row.names = FALSE)
+write.csv(reduced_vcov_df, file.path(output_dir, "manuscript_dlnm_reduced_vcov.csv"), row.names = FALSE)
 write.csv(time_sensitivity_df, file.path(output_dir, "manuscript_dlnm_time_adjustment_sensitivity.csv"), row.names = FALSE)
 message("Wrote manuscript-style DLNM results to ", output_dir)

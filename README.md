@@ -76,3 +76,7 @@ The coordinating center can pool returned site DLNM estimates with:
 ```r
 Rscript code/90_pool_federated_results.R
 ```
+
+This also pools exported aggregate DLNM curve points into `output/final/federated_pooled/pooled_dlnm_random_effects_curves.csv` for a CLIF-wide supplemental DLNM curve.
+
+Sites also export reduced DLNM coefficient and variance-covariance files from `dlnm::crossreduce()`, which can be used for a future multivariate DLNM meta-analysis of curve shape.

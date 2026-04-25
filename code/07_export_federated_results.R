@@ -27,6 +27,9 @@ config <- jsonlite::fromJSON(config_path)
 site_name <- config$site_name
 
 results_path <- file.path(repo_root, "output", "final", "ohca_tmax", "manuscript", "manuscript_dlnm_results.csv")
+curves_path <- file.path(repo_root, "output", "final", "ohca_tmax", "manuscript", "manuscript_dlnm_curves.csv")
+reduced_coef_path <- file.path(repo_root, "output", "final", "ohca_tmax", "manuscript", "manuscript_dlnm_reduced_coefficients.csv")
+reduced_vcov_path <- file.path(repo_root, "output", "final", "ohca_tmax", "manuscript", "manuscript_dlnm_reduced_vcov.csv")
 table1_path <- file.path(repo_root, "output", "final", "descriptive", "table1_ohca_cohort_characteristics.csv")
 outcomes_path <- file.path(repo_root, "output", "final", "descriptive", "ohca_outcomes_summary.csv")
 heat_table2_path <- file.path(repo_root, "output", "final", "descriptive", "table2_heat_related_vs_non_heat_related_ohca.csv")
@@ -44,6 +47,27 @@ results$site_name <- site_name
 results <- results[, c("site_name", setdiff(names(results), "site_name"))]
 
 write.csv(results, file.path(output_dir, paste0(site_name, "_dlnm_site_estimates.csv")), row.names = FALSE)
+
+if (file.exists(curves_path)) {
+  curves <- read.csv(curves_path, stringsAsFactors = FALSE)
+  curves$site_name <- site_name
+  curves <- curves[, c("site_name", setdiff(names(curves), "site_name"))]
+  write.csv(curves, file.path(output_dir, paste0(site_name, "_dlnm_curves.csv")), row.names = FALSE)
+}
+
+if (file.exists(reduced_coef_path)) {
+  reduced_coef <- read.csv(reduced_coef_path, stringsAsFactors = FALSE)
+  reduced_coef$site_name <- site_name
+  reduced_coef <- reduced_coef[, c("site_name", setdiff(names(reduced_coef), "site_name"))]
+  write.csv(reduced_coef, file.path(output_dir, paste0(site_name, "_dlnm_reduced_coefficients.csv")), row.names = FALSE)
+}
+
+if (file.exists(reduced_vcov_path)) {
+  reduced_vcov <- read.csv(reduced_vcov_path, stringsAsFactors = FALSE)
+  reduced_vcov$site_name <- site_name
+  reduced_vcov <- reduced_vcov[, c("site_name", setdiff(names(reduced_vcov), "site_name"))]
+  write.csv(reduced_vcov, file.path(output_dir, paste0(site_name, "_dlnm_reduced_vcov.csv")), row.names = FALSE)
+}
 
 if (file.exists(table1_path)) {
   table1 <- read.csv(table1_path, stringsAsFactors = FALSE)
