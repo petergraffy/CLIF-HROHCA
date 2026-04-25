@@ -1,21 +1,5 @@
 {
-    "site_name": "Your_Site_Name",
-    "tables_path": "/path/to/tables/",
-    "file_type": "csv/parquet/fst",
-    "daymet": {
-        "start_year": 2018,
-        "end_year": 2024,
-        "variable": "tmax",
-        "region": "na",
-        "dataset_id": "2129",
-        "collection_id": "C2532426483-ORNL_CLOUD",
-        "product_prefix": "Daymet_Daily_V4R1",
-        "direct_download_base": "https://data.ornldaac.earthdata.nasa.gov/protected/daymet/Daymet_Daily_V4R1/data",
-        "county_boundaries_year": 2024,
-        "county_boundaries_path": null,
-        "county_geoid_path": null,
-        "include_state_fips": [],
-        "raw_dir": "output/intermediate/daymet/raw",
-        "processed_dir": "output/intermediate/daymet/processed"
-    }
+  "site_name": "Your_Site_Name",
+  "tables_path": "/path/to/clif/2.1/tables",
+  "file_type": "parquet"
 }

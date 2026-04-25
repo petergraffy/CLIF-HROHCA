@@ -17,6 +17,7 @@ initialize_renv.R
 CLIF_*.parquet
 CLIF_*.csv
 CLIF_*.fst
+!reference/clif_hospital_geography.csv
 
 #ignore the identifier app
 CLIF_cohort_identifier*
@@ -34,3 +35,19 @@ initialize_renv.R
 # ignore large Daymet intermediate files
 output/intermediate/daymet/raw/
 *.nc
+
+# Local package/runtime caches
+.r-user-lib/
+.vendor-py/
+.mplconfig/
+
+# Never commit generated analysis outputs or CLIF-derived intermediates.
+output/
+
+# Historical exploratory scripts and one-off data build utilities.
+archive_nonessential/
+code/daymet/
+
+# Python/cache artifacts are not part of the site-runnable R workflow.
+__pycache__/
+*.pyc

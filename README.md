@@ -1,82 +1,78 @@
-# *CLIF Project Title*
+# CLIF-HROHCA
 
-## CLIF VERSION 
+Heat exposure and out-of-hospital cardiac arrest (OHCA) ICU admissions in CLIF.
 
-[major].[minor]
+This repository is organized for a federated CLIF analysis. Each site runs the same R workflow locally against its own CLIF 2.1 tables. Sites should share only the aggregate files created in `output/final/federated_exports/`.
 
-## Objective
+## Study Aim
 
-*Describe the project objective*
+Estimate whether county-level heat exposure is associated with daily OHCA ICU admissions, using hospital-aware county exposure linkage and distributed lag nonlinear models (DLNMs).
 
-## Required CLIF tables and fields
+## Required CLIF Tables
 
-Please refer to the [CLIF data dictionary](https://clif-icu.com/data-dictionary), [CLIF Tools](https://clif-icu.com/tools), [ETL Guide](https://clif-icu.com/etl-guide), and [specific table contacts](https://github.com/clif-consortium/CLIF?tab=readme-ov-file#relational-clif) for more information on constructing the required tables and fields. 
+- `clif_patient`: demographics for Table 1 and stratified analyses.
+- `clif_hospitalization`: admission date, discharge disposition, age, and patient county.
+- `clif_adt`: ICU entry, hospital identifier, ICU length of stay, and care pathway quality checks.
+- `clif_hospital_diagnosis` or `clif_admission_diagnosis`: present-on-admission cardiac arrest diagnosis codes.
+- `clif_respiratory_support`: optional but recommended for IMV rate and IMV duration.
+- `clif_medication_admin_continuous`: optional but recommended for vasopressor use.
 
-*List all required tables for the project here, and provide a brief rationale for why they are required.*
+## Exposome Inputs
 
-Example:
-The following tables are required:
-1. **patient**: `patient_id`, `race_category`, `ethnicity_category`, `sex_category`
-2. **hospitalization**: `patient_id`, `hospitalization_id`, `admission_dttm`, `discharge_dttm`, `age_at_admission`
-3. **vitals**: `hospitalization_id`, `recorded_dttm`, `vital_category`, `vital_value`
-   - `vital_category` = 'heart_rate', 'resp_rate', 'sbp', 'dbp', 'map', 'resp_rate', 'spo2'
-4. **labs**: `hospitalization_id`, `lab_result_dttm`, `lab_category`, `lab_value`
-   - `lab_category` = 'lactate'
-5. **medication_admin_continuous**: `hospitalization_id`, `admin_dttm`, `med_name`, `med_category`, `med_dose`, `med_dose_unit`
-   - `med_category` = "norepinephrine", "epinephrine", "phenylephrine", "vasopressin", "dopamine", "angiotensin", "nicardipine", "nitroprusside", "clevidipine", "cisatracurium"
-6. **respiratory_support**: `hospitalization_id`, `recorded_dttm`, `device_category`, `mode_category`, `tracheostomy`, `fio2_set`, `lpm_set`, `resp_rate_set`, `peep_set`, `resp_rate_obs`
+The root `exposome/` folder contains county-level environmental files used by all sites:
 
-For Python users, the [clifpy](https://common-longitudinal-icu-data-format.github.io/clifpy/) package provides essential utilities for working with CLIF data, including:
-- Key features: outlier handling, encounter stitching, wide data creation, and more
-- Advanced features: SOFA score computation, respiratory support waterfall, medication unit conversion, and more
+- `daymet_county_tmax_2018_2024_conus.parquet`
+- `daymet_county_rmax_2018_2024.parquet`
+- `no2_county_year.csv`
+- `pm25_county_year.csv`
 
-See the [clifpy user guide](https://common-longitudinal-icu-data-format.github.io/clifpy/user-guide/) for detailed documentation.
+These files are county-level only and contain no CLIF patient information.
 
-## Cohort identification
-*Describe study cohort inclusion and exclusion criteria here*
+## Site Setup
 
-## Expected Results
+1. Copy `config/config_template.json` to `config/config.json`.
+2. Set `site_name` to the site label used in `reference/clif_hospital_geography.csv`.
+3. Set `tables_path` to your local CLIF 2.1 table directory.
+4. Run package setup:
 
-*Describe the output of the analysis. The final project results should be saved in the [`output/final`](output/README.md) directory.*
-
-## Detailed Instructions for running the project
-
-## 1. Update `config/config.json`
-Follow instructions in the [config/README.md](config/README.md) file for detailed configuration steps.
-
-**Note: if using the `01_run_cohort_id_app.R` file, this step is not necessary as the app will create the config file for the user**
-
-## 2. Set up the project environment
-
-*Describe the steps to setup the project environment.*
-
-Example for R:
-Run `00_renv_restore.R` in the [code](code/templates/R) to set up the project environment
-
-Example for Python:
-
-**Preferred method using uv:**
-```
-uv init project-name
-cd project-name
-```
-Note: uv automatically creates virtual environments and manages dependencies. It generates required files like `uv.lock` for reproducible builds. For more details, see the [CLIF uv guide by Zewei Whiskey Liao](https://github.com/Common-Longitudinal-ICU-data-Format/CLIF-data-huddles/blob/main/notes/uv-and-conv-commits.md).
-
-**Alternative method using python3:**
-```
-python3 -m venv .mobilization
-source .mobilization/bin/activate
-pip install -r requirements.txt 
+```r
+Rscript code/00_install_or_restore_packages.R
 ```
 
-## 3. Run code
+## Run The Site Analysis
 
-Detailed instructions on the code workflow are provided in the [code directory](code/README.md)
+Run the full site workflow:
 
-## Example Repositories
-* [CLIF Adult Sepsis Events](https://github.com/08wparker/CLIF_sepsis) for R
-* [CLIF Eligibility for mobilization](https://github.com/kaveriC/CLIF-eligibility-for-mobilization) for Python
-* [CLIF Variation in Ventilation](https://github.com/ingra107/clif_vent_variation)
----
+```r
+Rscript code/run_site_analysis.R
+```
 
+Or run scripts one at a time from `code/`:
 
+```r
+Rscript code/01_build_ohca_cohort.R
+Rscript code/02_build_icu_exposure_series.R
+Rscript code/03_descriptive_tables.R
+Rscript code/04_dlnm_primary_and_sensitivity.R
+Rscript code/05_heat_related_vs_non_heat_related_table.R
+Rscript code/09_supplementary_ohca_outcome_models.R
+Rscript code/08_quality_checks.R
+Rscript code/06_manuscript_tables_figures.R
+Rscript code/07_export_federated_results.R
+```
+
+## Federated Sharing
+
+Share only files in:
+
+```text
+output/final/federated_exports/
+```
+
+Those files are aggregate-only and designed to be pooled across sites. Do not share `output/intermediate/`, which contains CLIF-derived row-level working files.
+
+The coordinating center can pool returned site DLNM estimates with:
+
+```r
+Rscript code/90_pool_federated_results.R
+```

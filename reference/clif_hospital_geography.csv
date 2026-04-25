@@ -1,0 +1,45 @@
+site_name,hospital_number,hospital_id,hospital_id_name,hospital_full_name,hospital_zipcode,hospital_county_fips,hospital_county_name,adjacent_county_fips,county_source
+Emory,1.0,EUH,Emory University - EUH,Emory University Hospital,30322,13089,DeKalb County,13063|13121|13135|13151|13247,zip_to_county_lookup
+Emory,2.0,ECLH,Emory University - ECLH,Emory Crawford Long Hospital (Now it is Midtown Hospital),30308,13121,Fulton County,13045|13057|13063|13067|13077|13089|13097|13113|13117|13135,zip_to_county_lookup
+Emory,3.0,ESJH,Emory University - ESJH,Emory St Joseph Hospital,30342,13121,Fulton County,13045|13057|13063|13067|13077|13089|13097|13113|13117|13135,manual_missing_zip_and_county
+Emory,4.0,EJCH,Emory University - EJCH,Emory Johns Creek Hospital,30097,13135,Gwinnett County,13013|13089|13117|13121|13139|13157|13247|13297,zip_to_county_lookup
+JHU,1.0,JHH,JHU - JHH,Johns Hopkins Hospital,21287,24510,Baltimore city,24003|24005,zip_to_county_lookup
+JHU,2.0,BMC,JHU-BMC,Johns Hopkins Bayview Medical Center,21224,24510,Baltimore city,24003|24005,zip_to_county_lookup
+JHU,3.0,SUB,JHU-SUB,Suburban Hospital (Johns Hopkins Medicine),20814,24031,Montgomery County,11001|24021|24027|24033|51013|51059|51107,zip_to_county_lookup
+JHU,4.0,HCG,JHU-HCGH,Johns Hopkins Howard County Medical Center,21044,24027,Howard County,24003|24005|24013|24021|24031|24033,zip_to_county_lookup
+JHU,5.0,SMH,JHU-SMH,Sibley Memorial Hospital,20016,11001,District of Columbia,24031|24033|51013|51510,zip_to_county_lookup
+Michigan,1.0,Michigan,University of Michigan,University of Michigan Health,48109,26161,Washtenaw County,26075|26091|26093|26115|26125|26163,zip_to_county_lookup
+NU,1.0,nu_nmh,NU - NMH,Northwestern Memorial Hospital,60611,17031,Cook County,17043|17089|17097|17111|17197|18089,zip_to_county_lookup
+NU,2.0,nu_cdh,NU - CDH,Northwestern Medicine Central DuPage Hospital,60190,17043,DuPage County,17031|17089|17093|17197,zip_to_county_lookup
+NU,3.0,nu_mh,NU - McHenry,Northwestern Medicine McHenry Hospital,60050,17111,McHenry County,17007|17031|17037|17089|17097|55059|55127,zip_to_county_lookup
+NU,4.0,nu_dh,NU - Delnor,Northwestern Medicine Delnor Community Hospital,60134,17089,Kane County,17031|17037|17043|17093|17111,zip_to_county_lookup
+NU,5.0,nu_kh,NU - Kishwaukee,Northwestern Medicine Kishwaukee Hospital,60115,17037,DeKalb County,17007|17089|17093|17099|17103|17111|17141|17201,zip_to_county_lookup
+NU,6.0,nu_hh,NU - Huntley,Northwestern Medicine Huntley Hospital,60142,17111,McHenry County,17007|17031|17037|17089|17097|55059|55127,manual_missing_zip_and_county
+NU,7.0,nu_ph,NU - Palos,Northwestern Medicine Palos Hospital,60463,17031,Cook County,17043|17089|17097|17111|17197|18089,manual_missing_zip_and_county
+NU,8.0,nu_lfh,NU - Lake Forest,Northwestern Medicine Lake Forest Hospital,60045,17097,Lake County,17031|17111|55059,zip_to_county_lookup
+NU,9.0,nu_vwh,NU - Vally West,Northwestern Medicine Valley West Hospitala,60548,17037,DeKalb County,17007|17089|17093|17099|17103|17111|17141|17201,manual_missing_zip_and_county
+OHSU,1.0,ohsu_main,OHSU - OHSU,Oregon Health & Science University Hospital (Ohsu Hospital And Clinics),97239,41051,Multnomah County,41005|41009|41027|41067|53011|53059,zip_to_county_lookup
+OHSU,2.0,ohsu_hmc,OHSU - HMC,Hillsboro Medical Center,97123,41067,Washington County,41005|41007|41009|41051|41057|41071,zip_to_county_lookup
+Penn,1.0,penn_hup,UPHS (Penn) - HUP,Hospital of the University of Pennsylvania,19104,42101,Philadelphia County,34005|34007|34015|42017|42045|42091,zip_to_county_lookup
+Penn,2.0,penn_ppmc,UPHS (Penn ) - PPMC,Penn Presbyterian Medical Center,19104,42101,Philadelphia County,34005|34007|34015|42017|42045|42091,zip_to_county_lookup
+Penn,3.0,penn_pah,UPHS (Penn) - PAH,Pennsylvania Hospital,19107,42101,Philadelphia County,34005|34007|34015|42017|42045|42091,zip_to_county_lookup
+Penn,4.0,penn_cch,UPHS (Penn) - CCH,Chester County Hospital,19380,42029,Chester County,10003|24015|42011|42045|42071|42091,zip_to_county_lookup
+Penn,5.0,penn_umcop,UPHS (Penn) - UMCOP,Penn Medicine Princeton Medical Center,08536,34023,Middlesex County,34021|34025|34035|34039|36085,zip_to_county_lookup
+Penn,6.0,penn_hupme,UPHS (Penn) - HUPME,Hospital of the University of Pennsylvania – Cedar Avenue,19143,42101,Philadelphia County,34005|34007|34015|42017|42045|42091,manual_missing_zip_and_county
+RUMC,1.0,RUMC,RUMC,Rush University Medical Center,60612,17031,Cook County,17043|17089|17097|17111|17197|18089,zip_to_county_lookup
+UCMC,1.0,UCMC,UCMC,University of Chicago Medical Center,60637,17031,Cook County,17043|17089|17097|17111|17197|18089,zip_to_county_lookup
+UCSF,1.0,1000,UCSF Parnassus,UCSF Helen Diller Medical Center at Parnassus Heights,94143,06075,San Francisco County,06081,zip_to_county_lookup
+UCSF,2.0,5102,UCSF Mission Bay,UCSF Medical Center at Mission Bay,94158,06075,San Francisco County,06081,manual_missing_zip_and_county
+UCSF,3.0,2010,UCSF Mt. Zion,UCSF Medical Center at Mount Zion,94115,06075,San Francisco County,06081,manual_missing_zip_and_county
+UMN,1.0,UMMC,UMMC - UMMC,M Health Fairview University of Minnesota Medical Center,55454,27053,Hennepin County,27003|27019|27037|27123|27139|27141|27171,zip_to_county_lookup
+UMN,2.0,Southdale,UMMC - Southdale,M Health Fairview Southdale Hospital,55435,27053,Hennepin County,27003|27019|27037|27123|27139|27141|27171,zip_to_county_lookup
+UMN,3.0,St. Johns,UMMC - St. Johns,M Health Fairview St John's Hospital,55109,27123,Ramsey County,27003|27037|27053|27163,zip_to_county_lookup
+UMN,4.0,St. Joes,UMMC - St. Joes,St. Joseph’s Hospital,55102,27123,Ramsey County,27003|27037|27053|27163,manual_missing_zip_and_county
+UMN,5.0,Ridges,UMMC - Ridges,M Health Fairview Ridges Hospital,55337,27037,Dakota County,27049|27053|27123|27131|27139|27163|55093,zip_to_county_lookup
+UMN,6.0,Woodwinds,UMMC - Woodwinds,M Health Fairview Woodwinds Hospital,55125,27163,Washington County,27003|27025|27037|27123|55093|55095|55109,zip_to_county_lookup
+UMN,7.0,Riverside,UMMC - Riverside,Fairview-Riverside,55454,27053,Hennepin County,27003|27019|27037|27123|27139|27141|27171,manual_missing_zip_and_county
+UMN,8.0,Lakes,UMMC - Lakes,M Health Fairview Lakes Medical Center,55092,27025,Chisago County,27003|27059|27065|27115|27163|55013|55095,zip_to_county_lookup
+UMN,9.0,Ranges/Hibbing,UMMC - Ranges/Hibbing,Fairview Range (University Medical Center Mesabi / Mesabi Clinics),55746,27137,St. Louis County,27001|27017|27061|27071|27075|55031,zip_to_county_lookup
+UMN,10.0,Northland,UMMC - Northland,M Health Fairview Northland Medical Center,55371,27095,Mille Lacs County,27001|27009|27035|27059|27065|27097|27141,zip_to_county_lookup
+UMN,11.0,Grand Itasca,UMMC - Grand Itasca,Grand Itasca Clinic and Hospital,55744,27061,Itasca County,27001|27007|27021|27071|27137,zip_to_county_lookup
+UMN,12.0,Bethesda,UMMC - Bethesda,Bethesda Hospital,55101,27123,Ramsey County,27003|27037|27053|27163,manual_missing_zip_and_county

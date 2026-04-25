@@ -1,58 +1,30 @@
- ## Code directory
+# Code Workflow
 
-Update this README with the specific project workflow instructions.
-This directory contains scripts for the project workflow. The general workflow consists of three main steps: cohort identification, quality control, and analysis. Scripts can be implemented in R or Python, depending on project requirements. Please note that this workflow is just a suggestion, and you may change the structure to suit your project needs.
+The site-facing workflow is R-only and uses numbered scripts in this folder.
 
-### General Workflow
+## Site Scripts
 
-1. Run the cohort_identification script
-   This script should:
-   - Apply inclusion and exclusion criteria
-   - Select required fields from each table
-   - Filter tables to include only required observations
+1. `00_install_or_restore_packages.R`: installs/restores required R packages into the project-local library and snapshots `renv.lock` when `renv` is available.
+2. `01_build_ohca_cohort.R`: builds adult ICU OHCA hospitalizations using present-on-admission cardiac arrest diagnosis codes and applies hospital-aware county assignment.
+3. `02_build_icu_exposure_series.R`: builds the all-ICU daily patient-address exposure series used as the comparison denominator for daily OHCA models.
+4. `03_descriptive_tables.R`: creates aggregate OHCA cohort characteristics and outcomes.
+5. `04_dlnm_primary_and_sensitivity.R`: fits primary, pollution-adjusted, MRT-reference, time-adjustment sensitivity, and stratified DLNM models.
+6. `05_heat_related_vs_non_heat_related_table.R`: creates the heat-related vs non-heat-related OHCA comparison table.
+7. `09_supplementary_ohca_outcome_models.R`: creates supplementary outcome models for death/hospice, vasopressors, ICU LOS, and IMV duration.
+8. `08_quality_checks.R`: creates aggregate denominator, admission-to-ICU timing, and care pathway quality checks.
+9. `06_manuscript_tables_figures.R`: formats manuscript tables and figures.
+10. `07_export_federated_results.R`: writes aggregate site files for federated pooling.
 
-   Expected outputs:
-   - cohort_ids: a list of unique identifiers for the study cohort
-   - cohort_data: the filtered study cohort data
-   - cohort_summary: a summary table describing the study cohort
+Run everything with:
 
-   Examples of cohort identification scripts:
-   - [`code/templates/Python/01_cohort_identification_template.py`](templates/Python/01_cohort_identification_template.py)
-   - [`code/templates/R/01_cohort_identification_template.R`](templates/R/01_cohort_identification_template.R)
+```r
+Rscript code/run_site_analysis.R
+```
 
-2. Run the quality_control script
-   This script should:
-   - Perform project-specific quality control checks on the filtered cohort data
-   - Handle outliers using predefined thresholds as given in `outlier-thresholds` directory. 
-   - Clean and preprocess the data for analysis
+## Coordinator Script
 
-   Script: [`code/templates/R/02_project_quality_checks_template.R`](templates/R/02_project_quality_checks_template.R) & [`code/templates/R/03_outlier_handling_template.R`](templates/R/03_outlier_handling_template.R) 
+`90_pool_federated_results.R` pools site-level DLNM estimates after the coordinating center places all site `*_dlnm_site_estimates.csv` files in `output/final/federated_exports/`.
 
-   Input: cohort_data 
+## Privacy Boundary
 
-   Output: cleaned_cohort_data 
-
-3. Run the analysis script(s)
-   This script (or set of scripts) should contain the main analysis code for the project.
-   It may be broken down into multiple scripts if necessary.
-   
-   Script: [`code/templates/R/04_project_analysis_template.R`](templates/R/04_project_analysis_template.R) 
-
-   Input: cleaned_cohort_data 
-
-   Output: [List of expected result files, e.g., statistical_results, figures, tables saved in the [`output/final`](../output/README.md) directory] 
-
-### Project-specific preprocessing
-
-For this project, create county-level heat exposure inputs before linking exposures to CLIF encounters.
-
-Current Daymet workflow:
-- [`code/daymet/01_download_daymet_county_tmax.R`](daymet/01_download_daymet_county_tmax.R): downloads Daymet V4 annual `tmax` files for 2018-2024 and aggregates daily county-level mean Tmax.
-
-Expected outputs:
-- `output/intermediate/daymet/raw`: cached annual Daymet netCDF files
-- `output/intermediate/daymet/processed/daymet_county_tmax_2018_2024.parquet`
-- `output/intermediate/daymet/processed/daymet_county_tmax_2018_2024.csv`
-
-
-
+Only `output/final/federated_exports/` should be shared. The scripts intentionally keep row-level CLIF-derived working files under `output/intermediate/`, which is git-ignored and should remain local.

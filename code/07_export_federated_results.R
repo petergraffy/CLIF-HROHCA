@@ -1,0 +1,103 @@
+#!/usr/bin/env Rscript
+
+get_script_path <- function() {
+  file_arg <- "--file="
+  args <- commandArgs(trailingOnly = FALSE)
+  match <- grep(file_arg, args, value = TRUE)
+  if (length(match) == 0) stop("Could not determine script path from commandArgs().")
+  normalizePath(sub(file_arg, "", match[[1]]), winslash = "/", mustWork = TRUE)
+}
+
+repo_root <- normalizePath(file.path(dirname(get_script_path()), ".."), winslash = "/", mustWork = TRUE)
+
+ensure_user_library <- function() {
+  version_parts <- strsplit(as.character(getRversion()), "\\.")[[1]]
+  version_stub <- paste(version_parts[1], version_parts[2], sep = ".")
+  user_lib <- file.path(repo_root, ".r-user-lib", version_stub)
+  dir.create(user_lib, recursive = TRUE, showWarnings = FALSE)
+  .libPaths(c(user_lib, .libPaths()))
+}
+ensure_user_library()
+
+config_path <- file.path(repo_root, "config", "config.json")
+output_dir <- file.path(repo_root, "output", "final", "federated_exports")
+dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
+
+config <- jsonlite::fromJSON(config_path)
+site_name <- config$site_name
+
+results_path <- file.path(repo_root, "output", "final", "ohca_tmax", "manuscript", "manuscript_dlnm_results.csv")
+table1_path <- file.path(repo_root, "output", "final", "descriptive", "table1_ohca_cohort_characteristics.csv")
+outcomes_path <- file.path(repo_root, "output", "final", "descriptive", "ohca_outcomes_summary.csv")
+heat_table2_path <- file.path(repo_root, "output", "final", "descriptive", "table2_heat_related_vs_non_heat_related_ohca.csv")
+time_sensitivity_path <- file.path(repo_root, "output", "final", "ohca_tmax", "manuscript", "manuscript_dlnm_time_adjustment_sensitivity.csv")
+adverse_models_path <- file.path(repo_root, "output", "final", "ohca_outcomes", "ohca_heat_adverse_outcome_models.csv")
+continuous_models_path <- file.path(repo_root, "output", "final", "ohca_outcomes", "ohca_heat_continuous_outcome_models.csv")
+adverse_rates_path <- file.path(repo_root, "output", "final", "ohca_outcomes", "ohca_heat_adverse_outcome_rates.csv")
+denominator_audit_path <- file.path(repo_root, "output", "final", "quality_checks", "model_denominator_audit.csv")
+icu_timing_path <- file.path(repo_root, "output", "final", "quality_checks", "ohca_admission_to_icu_timing_summary.csv")
+icu_timing_bins_path <- file.path(repo_root, "output", "final", "quality_checks", "ohca_admission_to_icu_timing_bins.csv")
+care_pathway_path <- file.path(repo_root, "output", "final", "quality_checks", "ohca_pre_icu_care_pathway_summary.csv")
+
+results <- read.csv(results_path, stringsAsFactors = FALSE)
+results$site_name <- site_name
+results <- results[, c("site_name", setdiff(names(results), "site_name"))]
+
+write.csv(results, file.path(output_dir, paste0(site_name, "_dlnm_site_estimates.csv")), row.names = FALSE)
+
+if (file.exists(table1_path)) {
+  table1 <- read.csv(table1_path, stringsAsFactors = FALSE)
+  table1$site_name <- site_name
+  write.csv(table1, file.path(output_dir, paste0(site_name, "_table1.csv")), row.names = FALSE)
+}
+
+if (file.exists(outcomes_path)) {
+  outcomes <- read.csv(outcomes_path, stringsAsFactors = FALSE)
+  outcomes$site_name <- site_name
+  write.csv(outcomes, file.path(output_dir, paste0(site_name, "_outcomes.csv")), row.names = FALSE)
+}
+
+if (file.exists(heat_table2_path)) {
+  heat_table2 <- read.csv(heat_table2_path, stringsAsFactors = FALSE)
+  heat_table2$site_name <- site_name
+  write.csv(heat_table2, file.path(output_dir, paste0(site_name, "_heat_related_vs_non_heat_related_table.csv")), row.names = FALSE)
+}
+
+if (file.exists(time_sensitivity_path)) {
+  time_sensitivity <- read.csv(time_sensitivity_path, stringsAsFactors = FALSE)
+  time_sensitivity$site_name <- site_name
+  write.csv(time_sensitivity, file.path(output_dir, paste0(site_name, "_dlnm_time_sensitivity.csv")), row.names = FALSE)
+}
+
+if (file.exists(adverse_models_path)) {
+  adverse_models <- read.csv(adverse_models_path, stringsAsFactors = FALSE)
+  adverse_models$site_name <- site_name
+  write.csv(adverse_models, file.path(output_dir, paste0(site_name, "_adverse_outcome_models.csv")), row.names = FALSE)
+}
+
+if (file.exists(continuous_models_path)) {
+  continuous_models <- read.csv(continuous_models_path, stringsAsFactors = FALSE)
+  continuous_models$site_name <- site_name
+  write.csv(continuous_models, file.path(output_dir, paste0(site_name, "_continuous_outcome_models.csv")), row.names = FALSE)
+}
+
+if (file.exists(adverse_rates_path)) {
+  adverse_rates <- read.csv(adverse_rates_path, stringsAsFactors = FALSE)
+  adverse_rates$site_name <- site_name
+  write.csv(adverse_rates, file.path(output_dir, paste0(site_name, "_adverse_outcome_rates.csv")), row.names = FALSE)
+}
+
+for (item in list(
+  list(path = denominator_audit_path, suffix = "denominator_audit"),
+  list(path = icu_timing_path, suffix = "icu_timing_summary"),
+  list(path = icu_timing_bins_path, suffix = "icu_timing_bins"),
+  list(path = care_pathway_path, suffix = "care_pathway_summary")
+)) {
+  if (file.exists(item$path)) {
+    dat <- read.csv(item$path, stringsAsFactors = FALSE)
+    dat$site_name <- site_name
+    write.csv(dat, file.path(output_dir, paste0(site_name, "_", item$suffix, ".csv")), row.names = FALSE)
+  }
+}
+
+message("Wrote federated site export files to ", output_dir)
