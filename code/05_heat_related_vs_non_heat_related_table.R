@@ -338,6 +338,120 @@ make_cumulative_events <- function(cohort, events, event_name, hours = CUMULATIV
     mutate(cumulative_pct = 100 * .data$n_events / .data$n_group)
 }
 
+summarize_renal_marker <- function(df, label, variable, direction = c("max", "min")) {
+  direction <- match.arg(direction)
+  empty <- tibble::tibble(
+    heat_definition = character(),
+    heat_related_ohca = character(),
+    window = character(),
+    marker = character(),
+    direction = character(),
+    n_patients = integer(),
+    median_value = numeric(),
+    q25_value = numeric(),
+    q75_value = numeric()
+  )
+  if (is.null(df) || nrow(df) == 0 || !"variable" %in% names(df)) return(empty)
+  marker <- df |>
+    filter(.data$variable == !!variable, !is.na(.data$event_hour), !is.na(.data$value)) |>
+    mutate(window = dplyr::case_when(
+      .data$event_hour >= 0 & .data$event_hour <= 24 ~ "0-24h",
+      .data$event_hour > 24 & .data$event_hour <= 72 ~ "24-72h",
+      TRUE ~ NA_character_
+    )) |>
+    filter(!is.na(.data$window)) |>
+    group_by(.data$heat_definition, .data$heat_related_ohca, .data$hospitalization_id, .data$window) |>
+    summarise(
+      value = if (direction == "max") max(.data$value, na.rm = TRUE) else min(.data$value, na.rm = TRUE),
+      .groups = "drop"
+    ) |>
+    group_by(.data$heat_definition, .data$heat_related_ohca, .data$window) |>
+    summarise(
+      marker = label,
+      direction = direction,
+      n_patients = n_distinct(.data$hospitalization_id),
+      median_value = median(.data$value, na.rm = TRUE),
+      q25_value = stats::quantile(.data$value, 0.25, na.rm = TRUE, names = FALSE),
+      q75_value = stats::quantile(.data$value, 0.75, na.rm = TRUE, names = FALSE),
+      .groups = "drop"
+    )
+  marker
+}
+
+summarize_crrt_windows <- function(cohort, crrt_first_events) {
+  base <- cohort |>
+    select("hospitalization_id", "heat_definition", "heat_related_ohca") |>
+    group_by(.data$heat_definition, .data$heat_related_ohca) |>
+    summarise(n_group = n_distinct(.data$hospitalization_id), .groups = "drop")
+
+  if (is.null(crrt_first_events) || nrow(crrt_first_events) == 0) {
+    return(base |>
+      tidyr::crossing(window = c("0-24h", "0-72h", "0-168h")) |>
+      mutate(n_crrt = 0L, crrt_pct = 0))
+  }
+
+  event_times <- crrt_first_events |>
+    inner_join(
+      cohort |> select("hospitalization_id", "first_icu_in", "heat_definition", "heat_related_ohca"),
+      by = "hospitalization_id",
+      relationship = "many-to-many"
+    ) |>
+    mutate(event_hour = pmax(0L, floor(as.numeric(difftime(.data$event_dttm, .data$first_icu_in, units = "hours"))))) |>
+    filter(!is.na(.data$event_hour)) |>
+    group_by(.data$heat_definition, .data$heat_related_ohca, .data$hospitalization_id) |>
+    summarise(event_hour = min(.data$event_hour), .groups = "drop")
+
+  dplyr::bind_rows(
+    tibble::tibble(window = "0-24h", max_hour = 24L),
+    tibble::tibble(window = "0-72h", max_hour = 72L),
+    tibble::tibble(window = "0-168h", max_hour = 168L)
+  ) |>
+    tidyr::crossing(base) |>
+    left_join(event_times, by = c("heat_definition", "heat_related_ohca"), relationship = "many-to-many") |>
+    group_by(.data$heat_definition, .data$heat_related_ohca, .data$window, .data$n_group) |>
+    summarise(
+      n_crrt = n_distinct(.data$hospitalization_id[!is.na(.data$event_hour) & .data$event_hour <= .data$max_hour]),
+      .groups = "drop"
+    ) |>
+    mutate(crrt_pct = 100 * .data$n_crrt / .data$n_group)
+}
+
+plot_renal_marker_summary <- function(df, heat_definition, filename, title) {
+  plot_df <- df |> filter(.data$heat_definition == heat_definition)
+  if (nrow(plot_df) == 0) return(invisible(NULL))
+
+  p <- ggplot(plot_df, aes(x = .data$window, y = .data$median_value, color = .data$heat_related_ohca, group = .data$heat_related_ohca)) +
+    geom_errorbar(aes(ymin = .data$q25_value, ymax = .data$q75_value), position = position_dodge(width = 0.35), width = 0.15) +
+    geom_point(position = position_dodge(width = 0.35), size = 2.3) +
+    facet_wrap(~ marker, scales = "free_y") +
+    scale_color_manual(values = c("Heat-related OHCA" = "#BC3908", "Non-heat-related OHCA" = "#335C67")) +
+    labs(title = title, x = NULL, y = "Median [IQR]", color = NULL) +
+    theme_minimal(base_size = 11) +
+    theme(legend.position = "bottom", plot.title = element_text(face = "bold"))
+
+  ggsave(file.path(FIGURE_DIR, filename), p, width = 10, height = 6.5, dpi = 300)
+}
+
+plot_crrt_window_summary <- function(df, heat_definition, filename, title) {
+  plot_df <- df |> filter(.data$heat_definition == heat_definition)
+  if (nrow(plot_df) == 0) return(invisible(NULL))
+
+  p <- ggplot(plot_df, aes(x = .data$window, y = .data$crrt_pct, fill = .data$heat_related_ohca)) +
+    geom_col(position = position_dodge(width = 0.75), width = 0.65) +
+    geom_text(
+      aes(label = paste0(.data$n_crrt, "/", .data$n_group)),
+      position = position_dodge(width = 0.75),
+      vjust = -0.25,
+      size = 3
+    ) +
+    scale_fill_manual(values = c("Heat-related OHCA" = "#BC3908", "Non-heat-related OHCA" = "#335C67")) +
+    labs(title = title, x = NULL, y = "CRRT cumulative incidence (%)", fill = NULL) +
+    theme_minimal(base_size = 11) +
+    theme(legend.position = "bottom", plot.title = element_text(face = "bold"))
+
+  ggsave(file.path(FIGURE_DIR, filename), p, width = 8, height = 5.5, dpi = 300)
+}
+
 plot_measure_trajectory <- function(df, heat_definition, output_type, filename, title) {
   plot_df <- df |>
     filter(.data$heat_definition == heat_definition, .data$output_type == output_type, !is.na(.data$median_value))
@@ -535,13 +649,41 @@ if (!is.null(labs) && nrow(labs) > 0) {
   labs$trajectory_dttm <- ifelse(is.na(labs$lab_collect_dttm), labs$lab_result_dttm, labs$lab_collect_dttm)
   labs$trajectory_dttm <- as_utc_datetime(labs$trajectory_dttm)
 }
+renal_lab_values <- if (!is.null(labs) && nrow(labs) > 0) {
+  labs |>
+    transmute(
+      hospitalization_id = as.character(.data$hospitalization_id),
+      recorded_dttm = as_utc_datetime(.data$trajectory_dttm),
+      variable = as.character(.data$lab_category),
+      value = suppressWarnings(as.numeric(.data$lab_value_numeric))
+    ) |>
+    filter(.data$variable %in% c("creatinine", "bun", "potassium", "bicarbonate", "phosphate", "magnesium", "lactate"), is.finite(.data$value)) |>
+    inner_join(
+      cohort_all_defs |> select("hospitalization_id", "first_icu_in", "last_icu_out", "heat_definition", "heat_related_ohca"),
+      by = "hospitalization_id",
+      relationship = "many-to-many"
+    ) |>
+    mutate(event_hour = floor(as.numeric(difftime(.data$recorded_dttm, .data$first_icu_in, units = "hours")))) |>
+    filter(.data$event_hour >= 0, .data$event_hour <= 72, .data$recorded_dttm >= .data$first_icu_in, .data$recorded_dttm <= .data$last_icu_out)
+} else {
+  tibble::tibble()
+}
+renal_marker_summary <- dplyr::bind_rows(
+  summarize_renal_marker(renal_lab_values, "Peak creatinine", "creatinine", "max"),
+  summarize_renal_marker(renal_lab_values, "Peak BUN", "bun", "max"),
+  summarize_renal_marker(renal_lab_values, "Peak potassium", "potassium", "max"),
+  summarize_renal_marker(renal_lab_values, "Lowest bicarbonate", "bicarbonate", "min"),
+  summarize_renal_marker(renal_lab_values, "Peak phosphate", "phosphate", "max"),
+  summarize_renal_marker(renal_lab_values, "Peak magnesium", "magnesium", "max"),
+  summarize_renal_marker(renal_lab_values, "Peak lactate", "lactate", "max")
+)
 lab_trajectories <- summarize_hourly_measurements(
   labs,
   cohort_all_defs,
   datetime_col = "trajectory_dttm",
   category_col = "lab_category",
   value_col = "lab_value_numeric",
-  categories = c("lactate", "ph_arterial", "creatinine", "bicarbonate", "potassium", "wbc", "troponin_t"),
+  categories = c("lactate", "ph_arterial", "creatinine", "bun", "bicarbonate", "potassium", "phosphate", "magnesium", "wbc", "troponin_t"),
   output_type = "labs"
 )
 lab_trajectories_smoothed <- summarize_smoothed_hourly_measurements(
@@ -550,7 +692,7 @@ lab_trajectories_smoothed <- summarize_smoothed_hourly_measurements(
   datetime_col = "trajectory_dttm",
   category_col = "lab_category",
   value_col = "lab_value_numeric",
-  categories = c("lactate", "ph_arterial", "creatinine", "bicarbonate", "potassium", "wbc", "troponin_t"),
+  categories = c("lactate", "ph_arterial", "creatinine", "bun", "bicarbonate", "potassium", "phosphate", "magnesium", "wbc", "troponin_t"),
   output_type = "labs"
 )
 
@@ -594,6 +736,13 @@ if (!is.null(medication) && nrow(medication) > 0) {
     select("hospitalization_id", "event_dttm")
 }
 
+first_event <- function(events) {
+  if (is.null(events) || nrow(events) == 0) return(NULL)
+  events |>
+    group_by(.data$hospitalization_id) |>
+    summarise(event_dttm = min(.data$event_dttm, na.rm = TRUE), .groups = "drop")
+}
+
 crrt <- read_clif_table(
   tables_path, file_type, "crrt_therapy",
   columns = c("hospitalization_id", "recorded_dttm"),
@@ -604,6 +753,8 @@ crrt_events <- if (!is.null(crrt) && nrow(crrt) > 0) {
 } else {
   NULL
 }
+crrt_first_events <- first_event(crrt_events)
+crrt_window_summary <- summarize_crrt_windows(cohort_all_defs, crrt_first_events)
 
 support_trajectories <- dplyr::bind_rows(
   summarize_hourly_support(imv_events, cohort_all_defs, denominators, "Invasive mechanical ventilation"),
@@ -611,13 +762,6 @@ support_trajectories <- dplyr::bind_rows(
   summarize_hourly_support(crrt_events, cohort_all_defs, denominators, "CRRT")
 )
 support_trajectories_smoothed <- smooth_support_trajectory(support_trajectories)
-
-first_event <- function(events) {
-  if (is.null(events) || nrow(events) == 0) return(NULL)
-  events |>
-    group_by(.data$hospitalization_id) |>
-    summarise(event_dttm = min(.data$event_dttm, na.rm = TRUE), .groups = "drop")
-}
 
 death_or_hospice_events <- ohca_exposed |>
   filter(.data$death_or_hospice == 1) |>
@@ -637,7 +781,7 @@ cumulative_incidence <- dplyr::bind_rows(
   make_cumulative_events(cohort_all_defs, alive_discharge_events, "Discharged alive without hospice"),
   make_cumulative_events(cohort_all_defs, first_event(imv_events), "First IMV"),
   make_cumulative_events(cohort_all_defs, first_event(vasopressor_events), "First vasopressor"),
-  make_cumulative_events(cohort_all_defs, first_event(crrt_events), "First CRRT")
+  make_cumulative_events(cohort_all_defs, crrt_first_events, "First CRRT")
 )
 
 readr::write_csv(thresholds, file.path(OUTPUT_DIR, "heat_related_ohca_thresholds.csv"))
@@ -654,6 +798,8 @@ readr::write_csv(vital_trajectories_smoothed, file.path(OUTPUT_DIR, "heat_relate
 readr::write_csv(lab_trajectories_smoothed, file.path(OUTPUT_DIR, "heat_related_ohca_hourly_lab_trajectories_smoothed.csv"))
 readr::write_csv(support_trajectories_smoothed, file.path(OUTPUT_DIR, "heat_related_ohca_hourly_support_trajectories_smoothed.csv"))
 readr::write_csv(cumulative_incidence, file.path(OUTPUT_DIR, "heat_related_ohca_hourly_cumulative_incidence.csv"))
+readr::write_csv(renal_marker_summary, file.path(OUTPUT_DIR, "heat_related_ohca_renal_metabolic_marker_summary.csv"))
+readr::write_csv(crrt_window_summary, file.path(OUTPUT_DIR, "heat_related_ohca_crrt_window_summary.csv"))
 
 for (heat_def in HEAT_DEFINITIONS$heat_definition) {
   plot_measure_trajectory(vital_trajectories, heat_def, "vitals", paste0("figure_", heat_def, "_hourly_vital_trajectories.png"), paste0("Hourly Vital Sign Trajectories: ", heat_def))
@@ -663,6 +809,8 @@ for (heat_def in HEAT_DEFINITIONS$heat_definition) {
   plot_smoothed_measure_trajectory(lab_trajectories_smoothed, heat_def, "labs", paste0("figure_", heat_def, "_hourly_lab_trajectories_smoothed.png"), paste0("Smoothed Hourly Laboratory Trajectories: ", heat_def))
   plot_smoothed_support_trajectory(support_trajectories_smoothed, heat_def, paste0("figure_", heat_def, "_hourly_support_trajectories_smoothed.png"), paste0("Smoothed Hourly ICU Support Trajectories: ", heat_def))
   plot_cumulative_incidence(cumulative_incidence, heat_def, paste0("figure_", heat_def, "_cumulative_incidence.png"), paste0("Cumulative Incidence After ICU Entry: ", heat_def))
+  plot_renal_marker_summary(renal_marker_summary, heat_def, paste0("figure_", heat_def, "_renal_metabolic_marker_summary.png"), paste0("Renal and Metabolic Marker Summary: ", heat_def))
+  plot_crrt_window_summary(crrt_window_summary, heat_def, paste0("figure_", heat_def, "_crrt_window_summary.png"), paste0("CRRT Initiation Windows: ", heat_def))
 }
 
 message("Wrote heat-related OHCA clinical phenotype outputs to ", OUTPUT_DIR)

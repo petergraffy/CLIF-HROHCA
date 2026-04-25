@@ -21,6 +21,8 @@ Required site outputs:
 - `*_heat_related_hourly_lab_trajectories_smoothed.csv`
 - `*_heat_related_hourly_support_trajectories_smoothed.csv`
 - `*_heat_related_hourly_cumulative_incidence.csv`
+- `*_heat_related_renal_metabolic_marker_summary.csv`
+- `*_heat_related_crrt_window_summary.csv`
 - `*_adverse_outcome_models.csv`
 - `*_continuous_outcome_models.csv`
 - `*_pollution_12m_binary_outcome_models.csv`
@@ -66,7 +68,7 @@ Secondary patient-level outcome models estimate whether same-day heat exposure a
 - ICU length of stay
 - invasive mechanical ventilation duration among ventilated patients
 
-Heat-related versus non-heat-related OHCA phenotype outputs compare the primary 95th percentile heat definition with a 90th percentile sensitivity definition. Sites export aggregate-only ICU-hour trajectories for vital signs, selected laboratory values, organ-support prevalence, and crude cumulative incidence of death/hospice, hospital death, alive discharge, IMV, vasopressors, and CRRT. Smoothed trajectory files use centered 7-hour rolling windows. Trajectory files include aggregate counts contributing to each displayed point.
+Heat-related versus non-heat-related OHCA phenotype outputs compare the primary 95th percentile heat definition with a 90th percentile sensitivity definition. Sites export aggregate-only ICU-hour trajectories for vital signs, selected laboratory values, organ-support prevalence, and crude cumulative incidence of death/hospice, hospital death, alive discharge, IMV, vasopressors, and CRRT. Smoothed trajectory files use centered 7-hour rolling windows. Trajectory files include aggregate counts contributing to each displayed point. Renal/metabolic summaries include CRRT initiation by 24, 72, and 168 hours plus early creatinine, BUN, potassium, bicarbonate, phosphate, magnesium, and lactate summaries when available.
 
 Supplementary pollution outcome models estimate whether county-linked 12-month lookback NO2 and PM2.5 are associated with death or hospice, ICU length of stay, and invasive mechanical ventilation duration. Because the available pollution inputs are county-year means, the 12-month lookback is approximated with a day-weighted average of the admission year and prior year county means. These models adjust for same-day `tmax`, same-day `rmax`, age, sex, race, admission month, and smooth calendar time. Two-pollutant sensitivity models include both NO2 and PM2.5 in the same model.
 

@@ -9,7 +9,7 @@ The site-facing workflow is R-only and uses numbered scripts in this folder.
 3. `02_build_icu_exposure_series.R`: builds the all-ICU daily patient-address exposure series used as the comparison denominator for daily OHCA models.
 4. `03_descriptive_tables.R`: creates aggregate OHCA cohort characteristics and outcomes.
 5. `04_dlnm_primary_and_sensitivity.R`: fits primary, pollution-adjusted, MRT-reference, time-adjustment sensitivity, and stratified DLNM models.
-6. `05_heat_related_vs_non_heat_related_table.R`: creates heat-related vs non-heat-related OHCA comparison tables, 90th-percentile sensitivity tables, ICU-hour clinical trajectories, and cumulative incidence plots.
+6. `05_heat_related_vs_non_heat_related_table.R`: creates heat-related vs non-heat-related OHCA comparison tables, 90th-percentile sensitivity tables, ICU-hour clinical trajectories, cumulative incidence plots, and renal/metabolic phenotype summaries.
 7. `09_supplementary_ohca_outcome_models.R`: creates supplementary outcome models for death/hospice, vasopressors, ICU LOS, and IMV duration.
 8. `08_quality_checks.R`: creates aggregate denominator, admission-to-ICU timing, and care pathway quality checks.
 9. `06_manuscript_tables_figures.R`: formats manuscript tables and figures.
