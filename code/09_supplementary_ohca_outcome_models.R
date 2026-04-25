@@ -179,6 +179,170 @@ fit_continuous_outcome_model <- function(df, outcome, exposure, exposure_label, 
   )
 }
 
+make_pollution_lookback <- function(df, pollution, value_col, output_col) {
+  current <- pollution
+  names(current)[names(current) == value_col] <- "pollution_current_year"
+  previous <- pollution
+  previous$year <- previous$year + 1L
+  names(previous)[names(previous) == value_col] <- "pollution_prior_year"
+
+  out <- merge(df, current[, c("county_fips", "year", "pollution_current_year")], by = c("county_fips", "year"), all.x = TRUE)
+  out <- merge(out, previous[, c("county_fips", "year", "pollution_prior_year")], by = c("county_fips", "year"), all.x = TRUE)
+
+  current_days <- as.integer(format(out$admission_date, "%j"))
+  prior_days <- 365 - pmin(current_days, 365)
+  out[[output_col]] <- ifelse(
+    !is.na(out$pollution_current_year) & !is.na(out$pollution_prior_year),
+    (out$pollution_current_year * current_days + out$pollution_prior_year * prior_days) / 365,
+    out$pollution_current_year
+  )
+  out$pollution_current_year <- NULL
+  out$pollution_prior_year <- NULL
+  out
+}
+
+pollution_scale_label <- function(x, label) {
+  scale <- as.numeric(stats::IQR(x, na.rm = TRUE))
+  if (!is.finite(scale) || scale <= 0) scale <- 1
+  list(scale = scale, label = sprintf("%s per site IQR (%.2f)", label, scale))
+}
+
+fit_pollution_binary_outcome_model <- function(df, outcome, exposure, exposure_label, adjustment_set = "single_pollutant") {
+  model_df <- df
+  model_df$race_group <- ifelse(model_df$race_category == "Black or African American", "Black", "Non-Black")
+  model_df$sex_group <- ifelse(model_df$sex_category %in% c("Male", "Female"), model_df$sex_category, "Other/Unknown")
+  model_df$month_factor <- factor(model_df$month)
+  scale_info <- pollution_scale_label(model_df[[exposure]], exposure_label)
+  model_df$pollution_scaled <- model_df[[exposure]] / scale_info$scale
+  if (adjustment_set == "two_pollutant") {
+    co_pollutant <- if (exposure == "no2_12m_mean") "pm25_12m_mean" else "no2_12m_mean"
+    co_label <- if (co_pollutant == "pm25_12m_mean") "PM2.5 12-month lookback" else "NO2 12-month lookback"
+    co_scale_info <- pollution_scale_label(model_df[[co_pollutant]], co_label)
+    model_df$co_pollutant_scaled <- model_df[[co_pollutant]] / co_scale_info$scale
+  } else {
+    co_pollutant <- NULL
+  }
+  time_df <- max(3L, length(unique(model_df$year)) * 2L)
+  rhs <- c(
+    "pollution_scaled",
+    "tmax_mean_c",
+    "rmax_mean_pct",
+    if (!is.null(co_pollutant)) "co_pollutant_scaled",
+    "age_at_admission",
+    "sex_group",
+    "race_group",
+    "month_factor",
+    "ns(time_index, df = time_df)"
+  )
+  formula_spec <- as.formula(paste(
+    outcome,
+    "~",
+    paste(rhs, collapse = " + ")
+  ))
+  environment(formula_spec) <- environment()
+  needed <- c(outcome, "pollution_scaled", "tmax_mean_c", "rmax_mean_pct", if (!is.null(co_pollutant)) "co_pollutant_scaled", "age_at_admission", "sex_group", "race_group", "month_factor", "time_index")
+  model_df <- model_df[complete.cases(model_df[, needed, drop = FALSE]), , drop = FALSE]
+  events <- sum(model_df[[outcome]] == 1)
+  non_events <- sum(model_df[[outcome]] == 0)
+  if (length(unique(model_df[[outcome]])) < 2 || min(events, non_events) < 20) {
+    return(data.frame(
+      outcome = outcome,
+      exposure = scale_info$label,
+      n = nrow(model_df),
+      events = events,
+      odds_ratio = NA_real_,
+      ci_low = NA_real_,
+      ci_high = NA_real_,
+      p_value = NA_real_,
+      estimable = FALSE,
+      converged = FALSE,
+      adjustment_set = adjustment_set,
+      note = "Adjusted model not estimated because one outcome level had fewer than 20 observations.",
+      stringsAsFactors = FALSE
+    ))
+  }
+  fit <- suppressWarnings(glm(formula_spec, data = model_df, family = binomial()))
+  out <- extract_model_term(fit, "pollution_scaled", outcome, scale_info$label, nrow(model_df), events)
+  out$adjustment_set <- adjustment_set
+  out$note <- paste(
+    "Logistic model; exposure is weighted 12-month lookback pollution.",
+    "Adjusted for same-day Tmax, same-day Rmax, age, sex, race, admission month, and smooth calendar time.",
+    ifelse(adjustment_set == "two_pollutant", "Includes the other pollutant as a co-pollutant sensitivity.", "")
+  )
+  out
+}
+
+fit_pollution_continuous_outcome_model <- function(df, outcome, exposure, exposure_label, subset_var = NULL, subset_value = NULL, adjustment_set = "single_pollutant") {
+  model_df <- df
+  if (!is.null(subset_var)) model_df <- model_df[model_df[[subset_var]] == subset_value, , drop = FALSE]
+  model_df$race_group <- ifelse(model_df$race_category == "Black or African American", "Black", "Non-Black")
+  model_df$sex_group <- ifelse(model_df$sex_category %in% c("Male", "Female"), model_df$sex_category, "Other/Unknown")
+  model_df$month_factor <- factor(model_df$month)
+  model_df$outcome_log1p <- log1p(model_df[[outcome]])
+  scale_info <- pollution_scale_label(model_df[[exposure]], exposure_label)
+  model_df$pollution_scaled <- model_df[[exposure]] / scale_info$scale
+  if (adjustment_set == "two_pollutant") {
+    co_pollutant <- if (exposure == "no2_12m_mean") "pm25_12m_mean" else "no2_12m_mean"
+    co_label <- if (co_pollutant == "pm25_12m_mean") "PM2.5 12-month lookback" else "NO2 12-month lookback"
+    co_scale_info <- pollution_scale_label(model_df[[co_pollutant]], co_label)
+    model_df$co_pollutant_scaled <- model_df[[co_pollutant]] / co_scale_info$scale
+  } else {
+    co_pollutant <- NULL
+  }
+  time_df <- max(3L, length(unique(model_df$year)) * 2L)
+  rhs <- c(
+    "pollution_scaled",
+    "tmax_mean_c",
+    "rmax_mean_pct",
+    if (!is.null(co_pollutant)) "co_pollutant_scaled",
+    "age_at_admission",
+    "sex_group",
+    "race_group",
+    "month_factor",
+    "ns(time_index, df = time_df)"
+  )
+  formula_spec <- as.formula(paste("outcome_log1p ~", paste(rhs, collapse = " + ")))
+  environment(formula_spec) <- environment()
+  needed <- c(outcome, "pollution_scaled", "tmax_mean_c", "rmax_mean_pct", if (!is.null(co_pollutant)) "co_pollutant_scaled", "age_at_admission", "sex_group", "race_group", "month_factor", "time_index")
+  model_df <- model_df[complete.cases(model_df[, needed, drop = FALSE]) & is.finite(model_df$outcome_log1p), , drop = FALSE]
+  if (nrow(model_df) < 50) {
+    return(data.frame(
+      outcome = outcome,
+      exposure = scale_info$label,
+      n = nrow(model_df),
+      geometric_mean_ratio = NA_real_,
+      ci_low = NA_real_,
+      ci_high = NA_real_,
+      p_value = NA_real_,
+      estimable = FALSE,
+      adjustment_set = adjustment_set,
+      note = "Adjusted continuous-outcome model not estimated because fewer than 50 observations were available.",
+      stringsAsFactors = FALSE
+    ))
+  }
+  fit <- lm(formula_spec, data = model_df)
+  coef_table <- summary(fit)$coefficients
+  beta <- coef_table["pollution_scaled", "Estimate"]
+  se <- coef_table["pollution_scaled", "Std. Error"]
+  data.frame(
+    outcome = outcome,
+    exposure = scale_info$label,
+    n = nrow(model_df),
+    geometric_mean_ratio = exp(beta),
+    ci_low = exp(beta - 1.96 * se),
+    ci_high = exp(beta + 1.96 * se),
+    p_value = coef_table["pollution_scaled", "Pr(>|t|)"],
+    estimable = TRUE,
+    adjustment_set = adjustment_set,
+    note = paste(
+      "Linear model of log1p outcome; exposure is weighted 12-month lookback pollution.",
+      "Adjusted for same-day Tmax, same-day Rmax, age, sex, race, admission month, and smooth calendar time.",
+      ifelse(adjustment_set == "two_pollutant", "Includes the other pollutant as a co-pollutant sensitivity.", "")
+    ),
+    stringsAsFactors = FALSE
+  )
+}
+
 ohca <- read.csv(ohca_path, stringsAsFactors = FALSE)
 ohca$admission_date <- as.Date(ohca$admission_date)
 ohca$admission_dttm <- as.POSIXct(ohca$admission_dttm, tz = "UTC")
@@ -245,6 +409,34 @@ continuous_rows <- list(
 )
 continuous_results <- do.call(rbind, continuous_rows)
 
+pollution_df <- ohca
+pollution_df <- make_pollution_lookback(pollution_df, no2, "no2_mean", "no2_12m_mean")
+pollution_df <- make_pollution_lookback(pollution_df, pm25, "pm25_mean", "pm25_12m_mean")
+pollution_df <- merge(pollution_df, tmax, by.x = c("county_fips", "admission_date"), by.y = c("county_fips", "date"), all.x = TRUE)
+pollution_df <- merge(pollution_df, rmax, by.x = c("county_fips", "admission_date"), by.y = c("county_fips", "date"), all.x = TRUE)
+pollution_df$icu_los_days <- as.numeric(pollution_df$icu_los_hours) / 24
+pollution_df$imv_duration_days <- as.numeric(pollution_df$imv_duration_hours) / 24
+
+pollution_binary_rows <- list(
+  death_or_hospice_no2 = fit_pollution_binary_outcome_model(pollution_df, "death_or_hospice", "no2_12m_mean", "NO2 12-month lookback"),
+  death_or_hospice_pm25 = fit_pollution_binary_outcome_model(pollution_df, "death_or_hospice", "pm25_12m_mean", "PM2.5 12-month lookback"),
+  death_or_hospice_no2_two_pollutant = fit_pollution_binary_outcome_model(pollution_df, "death_or_hospice", "no2_12m_mean", "NO2 12-month lookback", adjustment_set = "two_pollutant"),
+  death_or_hospice_pm25_two_pollutant = fit_pollution_binary_outcome_model(pollution_df, "death_or_hospice", "pm25_12m_mean", "PM2.5 12-month lookback", adjustment_set = "two_pollutant")
+)
+pollution_binary_results <- do.call(rbind, pollution_binary_rows)
+
+pollution_continuous_rows <- list(
+  icu_los_no2 = fit_pollution_continuous_outcome_model(pollution_df, "icu_los_days", "no2_12m_mean", "NO2 12-month lookback"),
+  icu_los_pm25 = fit_pollution_continuous_outcome_model(pollution_df, "icu_los_days", "pm25_12m_mean", "PM2.5 12-month lookback"),
+  imv_duration_no2 = fit_pollution_continuous_outcome_model(pollution_df, "imv_duration_days", "no2_12m_mean", "NO2 12-month lookback", subset_var = "imv_any", subset_value = 1),
+  imv_duration_pm25 = fit_pollution_continuous_outcome_model(pollution_df, "imv_duration_days", "pm25_12m_mean", "PM2.5 12-month lookback", subset_var = "imv_any", subset_value = 1),
+  icu_los_no2_two_pollutant = fit_pollution_continuous_outcome_model(pollution_df, "icu_los_days", "no2_12m_mean", "NO2 12-month lookback", adjustment_set = "two_pollutant"),
+  icu_los_pm25_two_pollutant = fit_pollution_continuous_outcome_model(pollution_df, "icu_los_days", "pm25_12m_mean", "PM2.5 12-month lookback", adjustment_set = "two_pollutant"),
+  imv_duration_no2_two_pollutant = fit_pollution_continuous_outcome_model(pollution_df, "imv_duration_days", "no2_12m_mean", "NO2 12-month lookback", subset_var = "imv_any", subset_value = 1, adjustment_set = "two_pollutant"),
+  imv_duration_pm25_two_pollutant = fit_pollution_continuous_outcome_model(pollution_df, "imv_duration_days", "pm25_12m_mean", "PM2.5 12-month lookback", subset_var = "imv_any", subset_value = 1, adjustment_set = "two_pollutant")
+)
+pollution_continuous_results <- do.call(rbind, pollution_continuous_rows)
+
 rate_rows <- do.call(rbind, lapply(outcomes, function(outcome) {
   by_heat <- aggregate(analysis_df[[outcome]], list(heat_95 = analysis_df$heat_95), function(x) c(events = sum(x == 1, na.rm = TRUE), n = sum(!is.na(x))))
   out <- do.call(data.frame, by_heat)
@@ -255,8 +447,11 @@ rate_rows <- do.call(rbind, lapply(outcomes, function(outcome) {
 }))
 
 write.csv(analysis_df, file.path(intermediate_dir, "ohca_heat_adverse_outcome_analysis_dataset.csv"), row.names = FALSE)
+write.csv(pollution_df, file.path(intermediate_dir, "ohca_pollution_outcome_analysis_dataset.csv"), row.names = FALSE)
 write.csv(model_results, file.path(output_dir, "ohca_heat_adverse_outcome_models.csv"), row.names = FALSE)
 write.csv(continuous_results, file.path(output_dir, "ohca_heat_continuous_outcome_models.csv"), row.names = FALSE)
+write.csv(pollution_binary_results, file.path(output_dir, "ohca_pollution_12m_binary_outcome_models.csv"), row.names = FALSE)
+write.csv(pollution_continuous_results, file.path(output_dir, "ohca_pollution_12m_continuous_outcome_models.csv"), row.names = FALSE)
 write.csv(rate_rows, file.path(output_dir, "ohca_heat_adverse_outcome_rates.csv"), row.names = FALSE)
 write.csv(data.frame(heat_threshold_tmax_c = heat_threshold), file.path(output_dir, "ohca_heat_adverse_outcome_threshold.csv"), row.names = FALSE)
 

@@ -35,8 +35,12 @@ curves <- read.csv(file.path(manuscript_dir, "manuscript_dlnm_curves.csv"), stri
 table1 <- read.csv(file.path(descriptive_dir, "table1_ohca_cohort_characteristics.csv"), stringsAsFactors = FALSE)
 heat_outcomes <- read.csv(file.path(descriptive_dir, "heat_related_vs_non_heat_related_ohca_outcomes.csv"), stringsAsFactors = FALSE)
 heat_table2_path <- file.path(descriptive_dir, "table2_heat_related_vs_non_heat_related_ohca.csv")
+heat_table2_all_path <- file.path(descriptive_dir, "table2_heat_related_vs_non_heat_related_ohca_all_definitions.csv")
+heat90_table2_path <- file.path(descriptive_dir, "table2_heat90_vs_non_heat90_ohca.csv")
 adverse_models_path <- file.path(outcomes_dir, "ohca_heat_adverse_outcome_models.csv")
 continuous_models_path <- file.path(outcomes_dir, "ohca_heat_continuous_outcome_models.csv")
+pollution_binary_models_path <- file.path(outcomes_dir, "ohca_pollution_12m_binary_outcome_models.csv")
+pollution_continuous_models_path <- file.path(outcomes_dir, "ohca_pollution_12m_continuous_outcome_models.csv")
 
 fmt_rr <- function(rr, low, high) {
   sprintf("%.2f (%.2f, %.2f)", rr, low, high)
@@ -60,6 +64,14 @@ if (file.exists(heat_table2_path)) {
   heat_table2 <- read.csv(heat_table2_path, stringsAsFactors = FALSE)
   write.csv(heat_table2, file.path(manuscript_dir, "table2_heat_related_vs_non_heat_related_ohca.csv"), row.names = FALSE)
 }
+if (file.exists(heat_table2_all_path)) {
+  heat_table2_all <- read.csv(heat_table2_all_path, stringsAsFactors = FALSE)
+  write.csv(heat_table2_all, file.path(manuscript_dir, "table2_heat_related_vs_non_heat_related_ohca_all_definitions.csv"), row.names = FALSE)
+}
+if (file.exists(heat90_table2_path)) {
+  heat90_table2 <- read.csv(heat90_table2_path, stringsAsFactors = FALSE)
+  write.csv(heat90_table2, file.path(manuscript_dir, "table2_heat90_vs_non_heat90_ohca.csv"), row.names = FALSE)
+}
 if (file.exists(adverse_models_path)) {
   adverse_models <- read.csv(adverse_models_path, stringsAsFactors = FALSE)
   adverse_models$or_95_ci <- fmt_rr(adverse_models$odds_ratio, adverse_models$ci_low, adverse_models$ci_high)
@@ -71,6 +83,18 @@ if (file.exists(continuous_models_path)) {
   continuous_models$ratio_95_ci <- fmt_rr(continuous_models$geometric_mean_ratio, continuous_models$ci_low, continuous_models$ci_high)
   continuous_models <- continuous_models[, c("outcome", "exposure", "n", "ratio_95_ci", "p_value", "estimable", "note")]
   write.csv(continuous_models, file.path(manuscript_dir, "table5_ohca_heat_continuous_outcome_models.csv"), row.names = FALSE)
+}
+if (file.exists(pollution_binary_models_path)) {
+  pollution_binary_models <- read.csv(pollution_binary_models_path, stringsAsFactors = FALSE)
+  pollution_binary_models$or_95_ci <- fmt_rr(pollution_binary_models$odds_ratio, pollution_binary_models$ci_low, pollution_binary_models$ci_high)
+  pollution_binary_models <- pollution_binary_models[, c("outcome", "exposure", "adjustment_set", "n", "events", "or_95_ci", "p_value", "estimable", "note")]
+  write.csv(pollution_binary_models, file.path(manuscript_dir, "table6_ohca_pollution_12m_binary_outcome_models.csv"), row.names = FALSE)
+}
+if (file.exists(pollution_continuous_models_path)) {
+  pollution_continuous_models <- read.csv(pollution_continuous_models_path, stringsAsFactors = FALSE)
+  pollution_continuous_models$ratio_95_ci <- fmt_rr(pollution_continuous_models$geometric_mean_ratio, pollution_continuous_models$ci_low, pollution_continuous_models$ci_high)
+  pollution_continuous_models <- pollution_continuous_models[, c("outcome", "exposure", "adjustment_set", "n", "ratio_95_ci", "p_value", "estimable", "note")]
+  write.csv(pollution_continuous_models, file.path(manuscript_dir, "table7_ohca_pollution_12m_continuous_outcome_models.csv"), row.names = FALSE)
 }
 
 primary_curve <- curves[curves$stratum == "Overall" & curves$model == "primary_humidity_adjusted", , drop = FALSE]

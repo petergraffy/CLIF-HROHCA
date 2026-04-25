@@ -21,7 +21,10 @@ ensure_user_library()
 
 config_path <- file.path(repo_root, "config", "config.json")
 output_dir <- file.path(repo_root, "output", "final", "federated_exports")
+figure_source_dir <- file.path(repo_root, "output", "final", "manuscript_figures")
+figure_export_dir <- file.path(output_dir, "figures")
 dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
+dir.create(figure_export_dir, recursive = TRUE, showWarnings = FALSE)
 
 config <- jsonlite::fromJSON(config_path)
 site_name <- config$site_name
@@ -33,9 +36,23 @@ reduced_vcov_path <- file.path(repo_root, "output", "final", "ohca_tmax", "manus
 table1_path <- file.path(repo_root, "output", "final", "descriptive", "table1_ohca_cohort_characteristics.csv")
 outcomes_path <- file.path(repo_root, "output", "final", "descriptive", "ohca_outcomes_summary.csv")
 heat_table2_path <- file.path(repo_root, "output", "final", "descriptive", "table2_heat_related_vs_non_heat_related_ohca.csv")
+heat_table2_all_path <- file.path(repo_root, "output", "final", "descriptive", "table2_heat_related_vs_non_heat_related_ohca_all_definitions.csv")
+heat90_table2_path <- file.path(repo_root, "output", "final", "descriptive", "table2_heat90_vs_non_heat90_ohca.csv")
+heat_thresholds_path <- file.path(repo_root, "output", "final", "descriptive", "heat_related_ohca_thresholds.csv")
+heat_summary_path <- file.path(repo_root, "output", "final", "descriptive", "heat_related_vs_non_heat_related_ohca_outcomes.csv")
+heat_discharge_path <- file.path(repo_root, "output", "final", "descriptive", "heat_related_vs_non_heat_related_discharge_categories.csv")
+heat_hourly_vitals_path <- file.path(repo_root, "output", "final", "descriptive", "heat_related_ohca_hourly_vital_trajectories.csv")
+heat_hourly_labs_path <- file.path(repo_root, "output", "final", "descriptive", "heat_related_ohca_hourly_lab_trajectories.csv")
+heat_hourly_support_path <- file.path(repo_root, "output", "final", "descriptive", "heat_related_ohca_hourly_support_trajectories.csv")
+heat_hourly_vitals_smoothed_path <- file.path(repo_root, "output", "final", "descriptive", "heat_related_ohca_hourly_vital_trajectories_smoothed.csv")
+heat_hourly_labs_smoothed_path <- file.path(repo_root, "output", "final", "descriptive", "heat_related_ohca_hourly_lab_trajectories_smoothed.csv")
+heat_hourly_support_smoothed_path <- file.path(repo_root, "output", "final", "descriptive", "heat_related_ohca_hourly_support_trajectories_smoothed.csv")
+heat_hourly_cumulative_path <- file.path(repo_root, "output", "final", "descriptive", "heat_related_ohca_hourly_cumulative_incidence.csv")
 time_sensitivity_path <- file.path(repo_root, "output", "final", "ohca_tmax", "manuscript", "manuscript_dlnm_time_adjustment_sensitivity.csv")
 adverse_models_path <- file.path(repo_root, "output", "final", "ohca_outcomes", "ohca_heat_adverse_outcome_models.csv")
 continuous_models_path <- file.path(repo_root, "output", "final", "ohca_outcomes", "ohca_heat_continuous_outcome_models.csv")
+pollution_binary_models_path <- file.path(repo_root, "output", "final", "ohca_outcomes", "ohca_pollution_12m_binary_outcome_models.csv")
+pollution_continuous_models_path <- file.path(repo_root, "output", "final", "ohca_outcomes", "ohca_pollution_12m_continuous_outcome_models.csv")
 adverse_rates_path <- file.path(repo_root, "output", "final", "ohca_outcomes", "ohca_heat_adverse_outcome_rates.csv")
 denominator_audit_path <- file.path(repo_root, "output", "final", "quality_checks", "model_denominator_audit.csv")
 icu_timing_path <- file.path(repo_root, "output", "final", "quality_checks", "ohca_admission_to_icu_timing_summary.csv")
@@ -87,6 +104,27 @@ if (file.exists(heat_table2_path)) {
   write.csv(heat_table2, file.path(output_dir, paste0(site_name, "_heat_related_vs_non_heat_related_table.csv")), row.names = FALSE)
 }
 
+for (item in list(
+  list(path = heat_table2_all_path, suffix = "heat_related_vs_non_heat_related_table_all_definitions"),
+  list(path = heat90_table2_path, suffix = "heat90_vs_non_heat90_table"),
+  list(path = heat_thresholds_path, suffix = "heat_related_ohca_thresholds"),
+  list(path = heat_summary_path, suffix = "heat_related_vs_non_heat_related_outcomes"),
+  list(path = heat_discharge_path, suffix = "heat_related_vs_non_heat_related_discharge_categories"),
+  list(path = heat_hourly_vitals_path, suffix = "heat_related_hourly_vital_trajectories"),
+  list(path = heat_hourly_labs_path, suffix = "heat_related_hourly_lab_trajectories"),
+  list(path = heat_hourly_support_path, suffix = "heat_related_hourly_support_trajectories"),
+  list(path = heat_hourly_vitals_smoothed_path, suffix = "heat_related_hourly_vital_trajectories_smoothed"),
+  list(path = heat_hourly_labs_smoothed_path, suffix = "heat_related_hourly_lab_trajectories_smoothed"),
+  list(path = heat_hourly_support_smoothed_path, suffix = "heat_related_hourly_support_trajectories_smoothed"),
+  list(path = heat_hourly_cumulative_path, suffix = "heat_related_hourly_cumulative_incidence")
+)) {
+  if (file.exists(item$path)) {
+    dat <- read.csv(item$path, stringsAsFactors = FALSE)
+    dat$site_name <- site_name
+    write.csv(dat, file.path(output_dir, paste0(site_name, "_", item$suffix, ".csv")), row.names = FALSE)
+  }
+}
+
 if (file.exists(time_sensitivity_path)) {
   time_sensitivity <- read.csv(time_sensitivity_path, stringsAsFactors = FALSE)
   time_sensitivity$site_name <- site_name
@@ -105,6 +143,18 @@ if (file.exists(continuous_models_path)) {
   write.csv(continuous_models, file.path(output_dir, paste0(site_name, "_continuous_outcome_models.csv")), row.names = FALSE)
 }
 
+if (file.exists(pollution_binary_models_path)) {
+  pollution_binary_models <- read.csv(pollution_binary_models_path, stringsAsFactors = FALSE)
+  pollution_binary_models$site_name <- site_name
+  write.csv(pollution_binary_models, file.path(output_dir, paste0(site_name, "_pollution_12m_binary_outcome_models.csv")), row.names = FALSE)
+}
+
+if (file.exists(pollution_continuous_models_path)) {
+  pollution_continuous_models <- read.csv(pollution_continuous_models_path, stringsAsFactors = FALSE)
+  pollution_continuous_models$site_name <- site_name
+  write.csv(pollution_continuous_models, file.path(output_dir, paste0(site_name, "_pollution_12m_continuous_outcome_models.csv")), row.names = FALSE)
+}
+
 if (file.exists(adverse_rates_path)) {
   adverse_rates <- read.csv(adverse_rates_path, stringsAsFactors = FALSE)
   adverse_rates$site_name <- site_name
@@ -121,6 +171,18 @@ for (item in list(
     dat <- read.csv(item$path, stringsAsFactors = FALSE)
     dat$site_name <- site_name
     write.csv(dat, file.path(output_dir, paste0(site_name, "_", item$suffix, ".csv")), row.names = FALSE)
+  }
+}
+
+if (dir.exists(figure_source_dir)) {
+  figure_files <- list.files(
+    figure_source_dir,
+    pattern = "\\.png$",
+    full.names = TRUE
+  )
+  for (figure_path in figure_files) {
+    dest <- file.path(figure_export_dir, paste0(site_name, "_", basename(figure_path)))
+    file.copy(figure_path, dest, overwrite = TRUE)
   }
 }
 
