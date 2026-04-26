@@ -1,82 +1,185 @@
 # CLIF-HROHCA
 
-Heat exposure and out-of-hospital cardiac arrest (OHCA) ICU admissions in CLIF.
+Federated CLIF analysis of heat exposure and out-of-hospital cardiac arrest (OHCA) ICU admissions.
 
-This repository is organized for a federated CLIF analysis. Each site runs the same R workflow locally against its own CLIF 2.1 tables. Sites should share only the aggregate files created in `output/final/federated_exports/`.
+Each site runs the same R workflow locally against its own CLIF 2.1 tables. Sites should share only the aggregate outputs in `output/final/federated_exports/`.
 
 ## Study Aim
 
-Estimate whether county-level heat exposure is associated with daily OHCA ICU admissions, using hospital-aware county exposure linkage and distributed lag nonlinear models (DLNMs).
+Estimate whether county-level heat exposure is associated with daily OHCA ICU admissions and characterize whether heat-related OHCA differs clinically from non-heat-related OHCA among patients who reach the ICU.
 
-## Required CLIF Tables
+The workflow produces:
 
-- `clif_patient`: demographics for Table 1 and stratified analyses.
-- `clif_hospitalization`: admission date, discharge disposition, age, and patient county.
-- `clif_adt`: ICU entry, hospital identifier, ICU length of stay, and care pathway quality checks.
-- `clif_hospital_diagnosis` or `clif_admission_diagnosis`: present-on-admission cardiac arrest diagnosis codes.
-- `clif_respiratory_support`: optional but recommended for IMV rate and IMV duration.
-- `clif_medication_admin_continuous`: optional but recommended for vasopressor use.
+- Daily OHCA ICU admission counts linked to county-level Tmax, relative humidity, NO2, and PM2.5.
+- Primary and sensitivity distributed lag nonlinear models (DLNMs) for heat and OHCA ICU admissions.
+- Site-level DLNM curves, reduced coefficient/vector covariance exports, and figure PNGs.
+- OHCA cohort descriptive tables and outcomes.
+- Heat-related versus non-heat-related OHCA phenotype tables using 95th percentile heat as primary and 90th percentile heat as sensitivity.
+- ICU-hour trajectories for vitals, labs, organ support, and cumulative incidence.
+- Renal/metabolic phenotype summaries, including CRRT initiation windows and early creatinine/BUN/electrolyte/lactate summaries.
+- Supplementary OHCA outcome models for same-day heat and 12-month pollution exposures.
 
-## Exposome Inputs
+## Required Inputs
 
-The root `exposome/` folder contains county-level environmental files used by all sites:
+### CLIF 2.1 Tables
+
+Required:
+
+- `clif_patient`
+- `clif_hospitalization`
+- `clif_adt`
+- `clif_hospital_diagnosis` or `clif_admission_diagnosis`
+
+Recommended for phenotype/outcome outputs:
+
+- `clif_respiratory_support`: IMV trajectories and duration.
+- `clif_medication_admin_continuous`: vasopressor trajectories.
+- `clif_labs`: renal/metabolic and lab trajectories.
+- `clif_vitals`: vital sign trajectories.
+- `clif_crrt_therapy`: CRRT initiation and trajectory outputs.
+
+Optional/experimental:
+
+- `clif_ecmo_mcs` is not currently used because some local extracts contain only `hospitalization_id` and `recorded_dttm`, which is not specific enough to identify true ECMO/MCS use.
+
+### Exposome Files
+
+The root `exposome/` folder contains county-level environmental inputs:
 
 - `daymet_county_tmax_2018_2024_conus.parquet`
 - `daymet_county_rmax_2018_2024.parquet`
 - `no2_county_year.csv`
 - `pm25_county_year.csv`
 
-These files are county-level only and contain no CLIF patient information.
+These are county-level files and contain no CLIF patient information.
 
-## Site Setup
+### Hospital Geography
 
-1. Copy `config/config_template.json` to `config/config.json`.
-2. Set `site_name` to the site label used in `reference/clif_hospital_geography.csv`.
-3. Set `tables_path` to your local CLIF 2.1 table directory.
-4. Run package setup:
+Hospital county assignment uses:
 
-```r
-Rscript code/00_install_or_restore_packages.R
+```text
+reference/clif_hospital_geography.csv
 ```
 
-## Run The Site Analysis
+For each hospitalization, the workflow keeps the patient county if it is the hospital county or an adjacent county. Missing or nonlocal patient counties are assigned to the admitting hospital county.
 
-Run the full site workflow:
+## Buddy-Test Quickstart
 
-```r
-Rscript code/run_site_analysis.R
+1. Clone the repository.
+
+2. Copy the config template:
+
+```powershell
+Copy-Item config\config_template.json config\config.json
 ```
 
-Or run scripts one at a time from `code/`:
+3. Edit `config/config.json`:
 
-```r
-Rscript code/01_build_ohca_cohort.R
-Rscript code/02_build_icu_exposure_series.R
-Rscript code/03_descriptive_tables.R
-Rscript code/04_dlnm_primary_and_sensitivity.R
-Rscript code/05_heat_related_vs_non_heat_related_table.R
-Rscript code/09_supplementary_ohca_outcome_models.R
-Rscript code/08_quality_checks.R
-Rscript code/06_manuscript_tables_figures.R
-Rscript code/07_export_federated_results.R
+```json
+{
+  "site_name": "YOUR_SITE_NAME",
+  "tables_path": "C:/path/to/local/CLIF/2.1/tables",
+  "file_type": "parquet"
+}
 ```
 
-## Federated Sharing
+`site_name` must match a site in `reference/clif_hospital_geography.csv`.
 
-Share only files in:
+4. Install or restore R packages:
+
+```powershell
+Rscript code\00_install_or_restore_packages.R
+```
+
+5. Run the full site workflow:
+
+```powershell
+Rscript code\run_site_analysis.R
+```
+
+6. Review outputs locally:
+
+```text
+output/final/
+```
+
+7. Share only:
 
 ```text
 output/final/federated_exports/
 ```
 
-Those files are aggregate-only and designed to be pooled across sites. Do not share `output/intermediate/`, which contains CLIF-derived row-level working files.
+Do not share `output/intermediate/`; it contains CLIF-derived row-level working files and is git-ignored.
 
-The coordinating center can pool returned site DLNM estimates with:
+## Key Site Outputs
 
-```r
-Rscript code/90_pool_federated_results.R
+The federated export folder includes aggregate CSVs plus site-level figure PNGs.
+
+Core analytic outputs:
+
+- `SITE_dlnm_site_estimates.csv`
+- `SITE_dlnm_curves.csv`
+- `SITE_dlnm_reduced_coefficients.csv`
+- `SITE_dlnm_reduced_vcov.csv`
+- `SITE_dlnm_time_sensitivity.csv`
+- `SITE_table1.csv`
+- `SITE_outcomes.csv`
+
+Heat-related OHCA phenotype outputs:
+
+- `SITE_heat_related_vs_non_heat_related_table.csv`
+- `SITE_heat_related_vs_non_heat_related_table_all_definitions.csv`
+- `SITE_heat90_vs_non_heat90_table.csv`
+- `SITE_heat_related_hourly_vital_trajectories.csv`
+- `SITE_heat_related_hourly_lab_trajectories.csv`
+- `SITE_heat_related_hourly_support_trajectories.csv`
+- `SITE_heat_related_hourly_vital_trajectories_smoothed.csv`
+- `SITE_heat_related_hourly_lab_trajectories_smoothed.csv`
+- `SITE_heat_related_hourly_support_trajectories_smoothed.csv`
+- `SITE_heat_related_hourly_cumulative_incidence.csv`
+- `SITE_heat_related_renal_metabolic_marker_summary.csv`
+- `SITE_heat_related_crrt_window_summary.csv`
+
+Outcome and sensitivity outputs:
+
+- `SITE_adverse_outcome_models.csv`
+- `SITE_continuous_outcome_models.csv`
+- `SITE_pollution_12m_binary_outcome_models.csv`
+- `SITE_pollution_12m_continuous_outcome_models.csv`
+- `SITE_adverse_outcome_rates.csv`
+
+Visual QC figures:
+
+```text
+output/final/federated_exports/figures/SITE_figure_*.png
 ```
 
-This also pools exported aggregate DLNM curve points into `output/final/federated_pooled/pooled_dlnm_random_effects_curves.csv` for a CLIF-wide supplemental DLNM curve.
+These include site-level DLNM plots, trajectory plots, cumulative incidence plots, CRRT-window plots, and renal/metabolic marker plots.
 
-Sites also export reduced DLNM coefficient and variance-covariance files from `dlnm::crossreduce()`, which can be used for a future multivariate DLNM meta-analysis of curve shape.
+## Coordinator Workflow
+
+The coordinating center places returned site exports in:
+
+```text
+output/final/federated_exports/
+```
+
+Then run:
+
+```powershell
+Rscript code\90_pool_federated_results.R
+```
+
+The current pooling script performs DerSimonian-Laird random-effects meta-analysis of site-level DLNM log relative risks and pointwise pooling of exported DLNM curve points. Reduced DLNM coefficient and variance-covariance exports are available for future multivariate meta-analysis of curve shape.
+
+## Troubleshooting
+
+- If the workflow cannot find CLIF tables, confirm `config/config.json` and `file_type`.
+- If `site_name` fails, confirm it exactly matches `reference/clif_hospital_geography.csv`.
+- If optional tables are missing, the workflow should skip or partially populate the corresponding phenotype outputs.
+- If figure PNGs look duplicated across heat90 and heat95, rerun the latest code; plot filtering was corrected to keep heat definitions separate.
+- If ECMO/MCS appears implausibly frequent, do not interpret it unless the local table has device/status fields sufficient to identify true ECMO/MCS use.
+
+## Privacy Boundary
+
+Only share `output/final/federated_exports/`. The exported files are aggregate site-level outputs designed for federated pooling and visual QC. Do not share `output/intermediate/` or local CLIF tables.
