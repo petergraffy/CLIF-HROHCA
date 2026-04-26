@@ -15,6 +15,7 @@ The workflow produces:
 - Site-level DLNM curves, reduced coefficient/vector covariance exports, and figure PNGs.
 - OHCA cohort descriptive tables and outcomes.
 - Heat-related versus non-heat-related OHCA phenotype tables using 95th percentile heat as primary and 90th percentile heat as sensitivity.
+- All-year sensitivity versions of heat-related versus non-heat-related OHCA phenotype tables and trajectories.
 - ICU-hour trajectories for vitals, labs, organ support, and cumulative incidence.
 - Renal/metabolic phenotype summaries, including CRRT initiation windows and early creatinine/BUN/electrolyte/lactate summaries.
 - Supplementary OHCA outcome models for same-day heat and 12-month pollution exposures.
@@ -163,6 +164,13 @@ Heat-related OHCA phenotype outputs:
 - `SITE_heat_related_hourly_cumulative_incidence.csv`
 - `SITE_heat_related_renal_metabolic_marker_summary.csv`
 - `SITE_heat_related_crrt_window_summary.csv`
+
+All-year heat-related OHCA sensitivity outputs use the same naming pattern with an `all_year_` prefix, for example:
+
+- `SITE_all_year_heat_related_vs_non_heat_related_table.csv`
+- `SITE_all_year_heat_related_hourly_vital_trajectories_smoothed.csv`
+- `SITE_all_year_heat_related_hourly_cumulative_incidence.csv`
+- `SITE_all_year_heat_related_crrt_window_summary.csv`
 
 Outcome and sensitivity outputs:
 

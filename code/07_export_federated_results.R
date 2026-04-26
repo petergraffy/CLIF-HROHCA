@@ -50,6 +50,21 @@ heat_hourly_support_smoothed_path <- file.path(repo_root, "output", "final", "de
 heat_hourly_cumulative_path <- file.path(repo_root, "output", "final", "descriptive", "heat_related_ohca_hourly_cumulative_incidence.csv")
 heat_renal_marker_path <- file.path(repo_root, "output", "final", "descriptive", "heat_related_ohca_renal_metabolic_marker_summary.csv")
 heat_crrt_window_path <- file.path(repo_root, "output", "final", "descriptive", "heat_related_ohca_crrt_window_summary.csv")
+all_year_heat_table2_path <- file.path(repo_root, "output", "final", "descriptive", "all_year_table2_heat_related_vs_non_heat_related_ohca.csv")
+all_year_heat_table2_all_path <- file.path(repo_root, "output", "final", "descriptive", "all_year_table2_heat_related_vs_non_heat_related_ohca_all_definitions.csv")
+all_year_heat90_table2_path <- file.path(repo_root, "output", "final", "descriptive", "all_year_table2_heat90_vs_non_heat90_ohca.csv")
+all_year_heat_thresholds_path <- file.path(repo_root, "output", "final", "descriptive", "all_year_heat_related_ohca_thresholds.csv")
+all_year_heat_summary_path <- file.path(repo_root, "output", "final", "descriptive", "all_year_heat_related_vs_non_heat_related_ohca_outcomes.csv")
+all_year_heat_discharge_path <- file.path(repo_root, "output", "final", "descriptive", "all_year_heat_related_vs_non_heat_related_discharge_categories.csv")
+all_year_heat_hourly_vitals_path <- file.path(repo_root, "output", "final", "descriptive", "all_year_heat_related_ohca_hourly_vital_trajectories.csv")
+all_year_heat_hourly_labs_path <- file.path(repo_root, "output", "final", "descriptive", "all_year_heat_related_ohca_hourly_lab_trajectories.csv")
+all_year_heat_hourly_support_path <- file.path(repo_root, "output", "final", "descriptive", "all_year_heat_related_ohca_hourly_support_trajectories.csv")
+all_year_heat_hourly_vitals_smoothed_path <- file.path(repo_root, "output", "final", "descriptive", "all_year_heat_related_ohca_hourly_vital_trajectories_smoothed.csv")
+all_year_heat_hourly_labs_smoothed_path <- file.path(repo_root, "output", "final", "descriptive", "all_year_heat_related_ohca_hourly_lab_trajectories_smoothed.csv")
+all_year_heat_hourly_support_smoothed_path <- file.path(repo_root, "output", "final", "descriptive", "all_year_heat_related_ohca_hourly_support_trajectories_smoothed.csv")
+all_year_heat_hourly_cumulative_path <- file.path(repo_root, "output", "final", "descriptive", "all_year_heat_related_ohca_hourly_cumulative_incidence.csv")
+all_year_heat_renal_marker_path <- file.path(repo_root, "output", "final", "descriptive", "all_year_heat_related_ohca_renal_metabolic_marker_summary.csv")
+all_year_heat_crrt_window_path <- file.path(repo_root, "output", "final", "descriptive", "all_year_heat_related_ohca_crrt_window_summary.csv")
 time_sensitivity_path <- file.path(repo_root, "output", "final", "ohca_tmax", "manuscript", "manuscript_dlnm_time_adjustment_sensitivity.csv")
 adverse_models_path <- file.path(repo_root, "output", "final", "ohca_outcomes", "ohca_heat_adverse_outcome_models.csv")
 continuous_models_path <- file.path(repo_root, "output", "final", "ohca_outcomes", "ohca_heat_continuous_outcome_models.csv")
@@ -120,7 +135,22 @@ for (item in list(
   list(path = heat_hourly_support_smoothed_path, suffix = "heat_related_hourly_support_trajectories_smoothed"),
   list(path = heat_hourly_cumulative_path, suffix = "heat_related_hourly_cumulative_incidence"),
   list(path = heat_renal_marker_path, suffix = "heat_related_renal_metabolic_marker_summary"),
-  list(path = heat_crrt_window_path, suffix = "heat_related_crrt_window_summary")
+  list(path = heat_crrt_window_path, suffix = "heat_related_crrt_window_summary"),
+  list(path = all_year_heat_table2_path, suffix = "all_year_heat_related_vs_non_heat_related_table"),
+  list(path = all_year_heat_table2_all_path, suffix = "all_year_heat_related_vs_non_heat_related_table_all_definitions"),
+  list(path = all_year_heat90_table2_path, suffix = "all_year_heat90_vs_non_heat90_table"),
+  list(path = all_year_heat_thresholds_path, suffix = "all_year_heat_related_ohca_thresholds"),
+  list(path = all_year_heat_summary_path, suffix = "all_year_heat_related_vs_non_heat_related_outcomes"),
+  list(path = all_year_heat_discharge_path, suffix = "all_year_heat_related_vs_non_heat_related_discharge_categories"),
+  list(path = all_year_heat_hourly_vitals_path, suffix = "all_year_heat_related_hourly_vital_trajectories"),
+  list(path = all_year_heat_hourly_labs_path, suffix = "all_year_heat_related_hourly_lab_trajectories"),
+  list(path = all_year_heat_hourly_support_path, suffix = "all_year_heat_related_hourly_support_trajectories"),
+  list(path = all_year_heat_hourly_vitals_smoothed_path, suffix = "all_year_heat_related_hourly_vital_trajectories_smoothed"),
+  list(path = all_year_heat_hourly_labs_smoothed_path, suffix = "all_year_heat_related_hourly_lab_trajectories_smoothed"),
+  list(path = all_year_heat_hourly_support_smoothed_path, suffix = "all_year_heat_related_hourly_support_trajectories_smoothed"),
+  list(path = all_year_heat_hourly_cumulative_path, suffix = "all_year_heat_related_hourly_cumulative_incidence"),
+  list(path = all_year_heat_renal_marker_path, suffix = "all_year_heat_related_renal_metabolic_marker_summary"),
+  list(path = all_year_heat_crrt_window_path, suffix = "all_year_heat_related_crrt_window_summary")
 )) {
   if (file.exists(item$path)) {
     dat <- read.csv(item$path, stringsAsFactors = FALSE)

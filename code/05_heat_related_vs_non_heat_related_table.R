@@ -620,10 +620,16 @@ tmax <- arrow::read_parquet(TMAX_PATH) |>
     county_fips = normalize_county_fips(.data$geoid),
     admission_date = as.Date(.data$date),
     tmax_mean_c = suppressWarnings(as.numeric(.data$tmax_mean_c))
-  ) |>
+  )
+
+tmax_warm <- tmax |>
   filter(as.integer(format(.data$admission_date, "%m")) %in% WARM_MONTHS)
 
 ohca_exposed <- ohca |>
+  left_join(tmax_warm, by = c("county_fips", "admission_date")) |>
+  filter(!is.na(.data$tmax_mean_c))
+
+ohca_exposed_all_year <- ohca |>
   left_join(tmax, by = c("county_fips", "admission_date")) |>
   filter(!is.na(.data$tmax_mean_c))
 
@@ -631,7 +637,14 @@ cohort_all_defs <- dplyr::bind_rows(lapply(seq_len(nrow(HEAT_DEFINITIONS)), func
   make_heat_groups(ohca_exposed, HEAT_DEFINITIONS$heat_definition[[i]], HEAT_DEFINITIONS$heat_percentile[[i]])
 }))
 
+cohort_all_defs_all_year <- dplyr::bind_rows(lapply(seq_len(nrow(HEAT_DEFINITIONS)), function(i) {
+  make_heat_groups(ohca_exposed_all_year, HEAT_DEFINITIONS$heat_definition[[i]], HEAT_DEFINITIONS$heat_percentile[[i]])
+}))
+
 thresholds <- cohort_all_defs |>
+  distinct(.data$heat_definition, .data$heat_percentile, .data$heat_threshold_tmax_c)
+
+thresholds_all_year <- cohort_all_defs_all_year |>
   distinct(.data$heat_definition, .data$heat_percentile, .data$heat_threshold_tmax_c)
 
 summary_df <- summarize_group(cohort_all_defs)
@@ -639,13 +652,25 @@ table2_all <- dplyr::bind_rows(lapply(split(cohort_all_defs, cohort_all_defs$hea
 table2_primary <- table2_all |> filter(.data$heat_definition == "heat95") |> select(-"heat_definition")
 table2_sensitivity <- table2_all |> filter(.data$heat_definition == "heat90") |> select(-"heat_definition")
 
+summary_df_all_year <- summarize_group(cohort_all_defs_all_year)
+table2_all_year_all <- dplyr::bind_rows(lapply(split(cohort_all_defs_all_year, cohort_all_defs_all_year$heat_definition), make_table2))
+table2_all_year_primary <- table2_all_year_all |> filter(.data$heat_definition == "heat95") |> select(-"heat_definition")
+table2_all_year_sensitivity <- table2_all_year_all |> filter(.data$heat_definition == "heat90") |> select(-"heat_definition")
+
 by_discharge <- cohort_all_defs |>
   count(.data$heat_definition, .data$heat_related_ohca, .data$discharge_category, name = "n") |>
   group_by(.data$heat_definition, .data$heat_related_ohca) |>
   mutate(pct = safe_pct(.data$n, sum(.data$n))) |>
   ungroup()
 
+by_discharge_all_year <- cohort_all_defs_all_year |>
+  count(.data$heat_definition, .data$heat_related_ohca, .data$discharge_category, name = "n") |>
+  group_by(.data$heat_definition, .data$heat_related_ohca) |>
+  mutate(pct = safe_pct(.data$n, sum(.data$n))) |>
+  ungroup()
+
 denominators <- hourly_denominators(cohort_all_defs, TRAJECTORY_HOURS)
+denominators_all_year <- hourly_denominators(cohort_all_defs_all_year, TRAJECTORY_HOURS)
 
 vitals <- read_clif_table(
   tables_path, file_type, "vitals",
@@ -664,6 +689,24 @@ vital_trajectories <- summarize_hourly_measurements(
 vital_trajectories_smoothed <- summarize_smoothed_hourly_measurements(
   vitals,
   cohort_all_defs,
+  datetime_col = "recorded_dttm",
+  category_col = "vital_category",
+  value_col = "vital_value",
+  categories = c("heart_rate", "map", "sbp", "spo2", "respiratory_rate", "temp_c"),
+  output_type = "vitals"
+)
+vital_trajectories_all_year <- summarize_hourly_measurements(
+  vitals,
+  cohort_all_defs_all_year,
+  datetime_col = "recorded_dttm",
+  category_col = "vital_category",
+  value_col = "vital_value",
+  categories = c("heart_rate", "map", "sbp", "spo2", "respiratory_rate", "temp_c"),
+  output_type = "vitals"
+)
+vital_trajectories_smoothed_all_year <- summarize_smoothed_hourly_measurements(
+  vitals,
+  cohort_all_defs_all_year,
   datetime_col = "recorded_dttm",
   category_col = "vital_category",
   value_col = "vital_value",
@@ -708,6 +751,34 @@ renal_marker_summary <- dplyr::bind_rows(
   summarize_renal_marker(renal_lab_values, "Peak magnesium", "magnesium", "max"),
   summarize_renal_marker(renal_lab_values, "Peak lactate", "lactate", "max")
 )
+renal_lab_values_all_year <- if (!is.null(labs) && nrow(labs) > 0) {
+  labs |>
+    transmute(
+      hospitalization_id = as.character(.data$hospitalization_id),
+      recorded_dttm = as_utc_datetime(.data$trajectory_dttm),
+      variable = as.character(.data$lab_category),
+      value = suppressWarnings(as.numeric(.data$lab_value_numeric))
+    ) |>
+    filter(.data$variable %in% c("creatinine", "bun", "potassium", "bicarbonate", "phosphate", "magnesium", "lactate"), is.finite(.data$value)) |>
+    inner_join(
+      cohort_all_defs_all_year |> select("hospitalization_id", "first_icu_in", "last_icu_out", "heat_definition", "heat_related_ohca"),
+      by = "hospitalization_id",
+      relationship = "many-to-many"
+    ) |>
+    mutate(event_hour = floor(as.numeric(difftime(.data$recorded_dttm, .data$first_icu_in, units = "hours")))) |>
+    filter(.data$event_hour >= 0, .data$event_hour <= 72, .data$recorded_dttm >= .data$first_icu_in, .data$recorded_dttm <= .data$last_icu_out)
+} else {
+  tibble::tibble()
+}
+renal_marker_summary_all_year <- dplyr::bind_rows(
+  summarize_renal_marker(renal_lab_values_all_year, "Peak creatinine", "creatinine", "max"),
+  summarize_renal_marker(renal_lab_values_all_year, "Peak BUN", "bun", "max"),
+  summarize_renal_marker(renal_lab_values_all_year, "Peak potassium", "potassium", "max"),
+  summarize_renal_marker(renal_lab_values_all_year, "Lowest bicarbonate", "bicarbonate", "min"),
+  summarize_renal_marker(renal_lab_values_all_year, "Peak phosphate", "phosphate", "max"),
+  summarize_renal_marker(renal_lab_values_all_year, "Peak magnesium", "magnesium", "max"),
+  summarize_renal_marker(renal_lab_values_all_year, "Peak lactate", "lactate", "max")
+)
 lab_trajectories <- summarize_hourly_measurements(
   labs,
   cohort_all_defs,
@@ -717,9 +788,27 @@ lab_trajectories <- summarize_hourly_measurements(
   categories = c("lactate", "ph_arterial", "creatinine", "bun", "bicarbonate", "potassium", "phosphate", "magnesium", "wbc", "troponin_t"),
   output_type = "labs"
 )
+lab_trajectories_all_year <- summarize_hourly_measurements(
+  labs,
+  cohort_all_defs_all_year,
+  datetime_col = "trajectory_dttm",
+  category_col = "lab_category",
+  value_col = "lab_value_numeric",
+  categories = c("lactate", "ph_arterial", "creatinine", "bun", "bicarbonate", "potassium", "phosphate", "magnesium", "wbc", "troponin_t"),
+  output_type = "labs"
+)
 lab_trajectories_smoothed <- summarize_smoothed_hourly_measurements(
   labs,
   cohort_all_defs,
+  datetime_col = "trajectory_dttm",
+  category_col = "lab_category",
+  value_col = "lab_value_numeric",
+  categories = c("lactate", "ph_arterial", "creatinine", "bun", "bicarbonate", "potassium", "phosphate", "magnesium", "wbc", "troponin_t"),
+  output_type = "labs"
+)
+lab_trajectories_smoothed_all_year <- summarize_smoothed_hourly_measurements(
+  labs,
+  cohort_all_defs_all_year,
   datetime_col = "trajectory_dttm",
   category_col = "lab_category",
   value_col = "lab_value_numeric",
@@ -791,6 +880,7 @@ crrt_events <- if (!is.null(crrt) && nrow(crrt) > 0) {
 }
 crrt_first_events <- first_event(crrt_events)
 crrt_window_summary <- summarize_crrt_windows(cohort_all_defs, crrt_first_events)
+crrt_window_summary_all_year <- summarize_crrt_windows(cohort_all_defs_all_year, crrt_first_events)
 
 support_trajectories <- dplyr::bind_rows(
   summarize_hourly_support(imv_events, cohort_all_defs, denominators, "Invasive mechanical ventilation"),
@@ -798,6 +888,13 @@ support_trajectories <- dplyr::bind_rows(
   summarize_hourly_support(crrt_events, cohort_all_defs, denominators, "CRRT")
 )
 support_trajectories_smoothed <- smooth_support_trajectory(support_trajectories)
+
+support_trajectories_all_year <- dplyr::bind_rows(
+  summarize_hourly_support(imv_events, cohort_all_defs_all_year, denominators_all_year, "Invasive mechanical ventilation"),
+  summarize_hourly_support(vasopressor_events, cohort_all_defs_all_year, denominators_all_year, "Vasopressor infusion"),
+  summarize_hourly_support(crrt_events, cohort_all_defs_all_year, denominators_all_year, "CRRT")
+)
+support_trajectories_smoothed_all_year <- smooth_support_trajectory(support_trajectories_all_year)
 
 death_or_hospice_events <- ohca_exposed |>
   filter(.data$death_or_hospice == 1) |>
@@ -811,6 +908,18 @@ alive_discharge_events <- ohca_exposed |>
   filter(.data$death_or_hospice == 0) |>
   transmute(hospitalization_id = .data$hospitalization_id, event_dttm = .data$discharge_dttm)
 
+death_or_hospice_events_all_year <- ohca_exposed_all_year |>
+  filter(.data$death_or_hospice == 1) |>
+  transmute(hospitalization_id = .data$hospitalization_id, event_dttm = .data$discharge_dttm)
+
+hospital_death_events_all_year <- ohca_exposed_all_year |>
+  filter(.data$hospital_death == 1) |>
+  transmute(hospitalization_id = .data$hospitalization_id, event_dttm = .data$discharge_dttm)
+
+alive_discharge_events_all_year <- ohca_exposed_all_year |>
+  filter(.data$death_or_hospice == 0) |>
+  transmute(hospitalization_id = .data$hospitalization_id, event_dttm = .data$discharge_dttm)
+
 cumulative_incidence <- dplyr::bind_rows(
   make_cumulative_events(cohort_all_defs, death_or_hospice_events, "Death or hospice"),
   make_cumulative_events(cohort_all_defs, hospital_death_events, "Hospital death"),
@@ -818,6 +927,15 @@ cumulative_incidence <- dplyr::bind_rows(
   make_cumulative_events(cohort_all_defs, first_event(imv_events), "First IMV"),
   make_cumulative_events(cohort_all_defs, first_event(vasopressor_events), "First vasopressor"),
   make_cumulative_events(cohort_all_defs, crrt_first_events, "First CRRT")
+)
+
+cumulative_incidence_all_year <- dplyr::bind_rows(
+  make_cumulative_events(cohort_all_defs_all_year, death_or_hospice_events_all_year, "Death or hospice"),
+  make_cumulative_events(cohort_all_defs_all_year, hospital_death_events_all_year, "Hospital death"),
+  make_cumulative_events(cohort_all_defs_all_year, alive_discharge_events_all_year, "Discharged alive without hospice"),
+  make_cumulative_events(cohort_all_defs_all_year, first_event(imv_events), "First IMV"),
+  make_cumulative_events(cohort_all_defs_all_year, first_event(vasopressor_events), "First vasopressor"),
+  make_cumulative_events(cohort_all_defs_all_year, crrt_first_events, "First CRRT")
 )
 
 readr::write_csv(thresholds, file.path(OUTPUT_DIR, "heat_related_ohca_thresholds.csv"))
@@ -836,6 +954,22 @@ readr::write_csv(support_trajectories_smoothed, file.path(OUTPUT_DIR, "heat_rela
 readr::write_csv(cumulative_incidence, file.path(OUTPUT_DIR, "heat_related_ohca_hourly_cumulative_incidence.csv"))
 readr::write_csv(renal_marker_summary, file.path(OUTPUT_DIR, "heat_related_ohca_renal_metabolic_marker_summary.csv"))
 readr::write_csv(crrt_window_summary, file.path(OUTPUT_DIR, "heat_related_ohca_crrt_window_summary.csv"))
+readr::write_csv(thresholds_all_year, file.path(OUTPUT_DIR, "all_year_heat_related_ohca_thresholds.csv"))
+readr::write_csv(thresholds_all_year |> filter(.data$heat_definition == "heat95") |> transmute(heat_threshold_tmax_c = .data$heat_threshold_tmax_c), file.path(OUTPUT_DIR, "all_year_heat_related_ohca_threshold.csv"))
+readr::write_csv(summary_df_all_year, file.path(OUTPUT_DIR, "all_year_heat_related_vs_non_heat_related_ohca_outcomes.csv"))
+readr::write_csv(by_discharge_all_year, file.path(OUTPUT_DIR, "all_year_heat_related_vs_non_heat_related_discharge_categories.csv"))
+readr::write_csv(table2_all_year_primary, file.path(OUTPUT_DIR, "all_year_table2_heat_related_vs_non_heat_related_ohca.csv"))
+readr::write_csv(table2_all_year_all, file.path(OUTPUT_DIR, "all_year_table2_heat_related_vs_non_heat_related_ohca_all_definitions.csv"))
+readr::write_csv(table2_all_year_sensitivity, file.path(OUTPUT_DIR, "all_year_table2_heat90_vs_non_heat90_ohca.csv"))
+readr::write_csv(vital_trajectories_all_year, file.path(OUTPUT_DIR, "all_year_heat_related_ohca_hourly_vital_trajectories.csv"))
+readr::write_csv(lab_trajectories_all_year, file.path(OUTPUT_DIR, "all_year_heat_related_ohca_hourly_lab_trajectories.csv"))
+readr::write_csv(support_trajectories_all_year, file.path(OUTPUT_DIR, "all_year_heat_related_ohca_hourly_support_trajectories.csv"))
+readr::write_csv(vital_trajectories_smoothed_all_year, file.path(OUTPUT_DIR, "all_year_heat_related_ohca_hourly_vital_trajectories_smoothed.csv"))
+readr::write_csv(lab_trajectories_smoothed_all_year, file.path(OUTPUT_DIR, "all_year_heat_related_ohca_hourly_lab_trajectories_smoothed.csv"))
+readr::write_csv(support_trajectories_smoothed_all_year, file.path(OUTPUT_DIR, "all_year_heat_related_ohca_hourly_support_trajectories_smoothed.csv"))
+readr::write_csv(cumulative_incidence_all_year, file.path(OUTPUT_DIR, "all_year_heat_related_ohca_hourly_cumulative_incidence.csv"))
+readr::write_csv(renal_marker_summary_all_year, file.path(OUTPUT_DIR, "all_year_heat_related_ohca_renal_metabolic_marker_summary.csv"))
+readr::write_csv(crrt_window_summary_all_year, file.path(OUTPUT_DIR, "all_year_heat_related_ohca_crrt_window_summary.csv"))
 
 for (heat_def in HEAT_DEFINITIONS$heat_definition) {
   plot_measure_trajectory(vital_trajectories, heat_def, "vitals", paste0("figure_", heat_def, "_hourly_vital_trajectories.png"), paste0("Hourly Vital Sign Trajectories: ", heat_def))
@@ -847,7 +981,17 @@ for (heat_def in HEAT_DEFINITIONS$heat_definition) {
   plot_cumulative_incidence(cumulative_incidence, heat_def, paste0("figure_", heat_def, "_cumulative_incidence.png"), paste0("Cumulative Incidence After ICU Entry: ", heat_def))
   plot_renal_marker_summary(renal_marker_summary, heat_def, paste0("figure_", heat_def, "_renal_metabolic_marker_summary.png"), paste0("Renal and Metabolic Marker Summary: ", heat_def))
   plot_crrt_window_summary(crrt_window_summary, heat_def, paste0("figure_", heat_def, "_crrt_window_summary.png"), paste0("CRRT Initiation Windows: ", heat_def))
+  plot_measure_trajectory(vital_trajectories_all_year, heat_def, "vitals", paste0("figure_all_year_", heat_def, "_hourly_vital_trajectories.png"), paste0("All-Year Hourly Vital Sign Trajectories: ", heat_def))
+  plot_measure_trajectory(lab_trajectories_all_year, heat_def, "labs", paste0("figure_all_year_", heat_def, "_hourly_lab_trajectories.png"), paste0("All-Year Hourly Laboratory Trajectories: ", heat_def))
+  plot_support_trajectory(support_trajectories_all_year, heat_def, paste0("figure_all_year_", heat_def, "_hourly_support_trajectories.png"), paste0("All-Year Hourly ICU Support Trajectories: ", heat_def))
+  plot_smoothed_measure_trajectory(vital_trajectories_smoothed_all_year, heat_def, "vitals", paste0("figure_all_year_", heat_def, "_hourly_vital_trajectories_smoothed.png"), paste0("All-Year Smoothed Hourly Vital Sign Trajectories: ", heat_def))
+  plot_smoothed_measure_trajectory(lab_trajectories_smoothed_all_year, heat_def, "labs", paste0("figure_all_year_", heat_def, "_hourly_lab_trajectories_smoothed.png"), paste0("All-Year Smoothed Hourly Laboratory Trajectories: ", heat_def))
+  plot_smoothed_support_trajectory(support_trajectories_smoothed_all_year, heat_def, paste0("figure_all_year_", heat_def, "_hourly_support_trajectories_smoothed.png"), paste0("All-Year Smoothed Hourly ICU Support Trajectories: ", heat_def))
+  plot_cumulative_incidence(cumulative_incidence_all_year, heat_def, paste0("figure_all_year_", heat_def, "_cumulative_incidence.png"), paste0("All-Year Cumulative Incidence After ICU Entry: ", heat_def))
+  plot_renal_marker_summary(renal_marker_summary_all_year, heat_def, paste0("figure_all_year_", heat_def, "_renal_metabolic_marker_summary.png"), paste0("All-Year Renal and Metabolic Marker Summary: ", heat_def))
+  plot_crrt_window_summary(crrt_window_summary_all_year, heat_def, paste0("figure_all_year_", heat_def, "_crrt_window_summary.png"), paste0("All-Year CRRT Initiation Windows: ", heat_def))
 }
 plot_crrt_window_comparison(crrt_window_summary, "figure_crrt_window_heat_definition_comparison.png")
+plot_crrt_window_comparison(crrt_window_summary_all_year, "figure_all_year_crrt_window_heat_definition_comparison.png")
 
 message("Wrote heat-related OHCA clinical phenotype outputs to ", OUTPUT_DIR)
