@@ -21,7 +21,6 @@ ensure_user_library()
 
 suppressPackageStartupMessages({
   library(dlnm)
-  library(MASS)
   library(splines)
 })
 
@@ -32,7 +31,7 @@ output_dir <- file.path(repo_root, "output", "final", "ohca_tmax", "manuscript")
 dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
 
 START_DATE <- as.Date("2018-01-01")
-END_DATE <- as.Date("2024-12-30")
+END_DATE <- as.Date("2024-12-31")
 WARM_MONTHS <- c(5L, 6L, 7L, 8L, 9L)
 MAX_LAG <- 5L
 TIME_DF_PER_YEAR <- 4L
@@ -84,7 +83,8 @@ run_dlnm_spec <- function(
   formula_spec <- build_formula(extra_terms, include_dow = include_dow, include_year = include_year)
   environment(formula_spec) <- environment()
   environment(formula_spec)$time_df <- length(unique(df$year)) * time_df_per_year
-  fit <- MASS::glm.nb(formula_spec, data = df)
+  fit <- glm(formula_spec, data = df, family = quasipoisson(link = "log"))
+  dispersion <- summary(fit)$dispersion
   grid <- make_prediction_grid(df$icu_patient_address_mean_tmax_c)
   initial_center <- median(df$icu_patient_address_mean_tmax_c, na.rm = TRUE)
   pred_initial <- crosspred(cb_temp, fit, cen = initial_center, at = grid)
@@ -106,7 +106,9 @@ run_dlnm_spec <- function(
     cumulative_rr_high = as.numeric(pred$allRRhigh[hot_index]),
     log_rr = log(as.numeric(pred$allRRfit[hot_index])),
     log_rr_se = (log(as.numeric(pred$allRRhigh[hot_index])) - log(as.numeric(pred$allRRlow[hot_index]))) / (2 * 1.96),
-    aic = AIC(fit),
+    aic = NA_real_,
+    dispersion = dispersion,
+    model_family = "quasipoisson",
     time_df_per_year = time_df_per_year,
     includes_day_of_week = include_dow,
     includes_year_fixed_effect = include_year,

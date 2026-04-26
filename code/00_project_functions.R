@@ -5,7 +5,6 @@ required_packages <- c(
   "ggplot2",
   "jsonlite",
   "lubridate",
-  "MASS",
   "readr",
   "stringr",
   "tibble",
@@ -72,10 +71,31 @@ read_clif_table <- function(tables_path, file_type, table_name, columns = NULL, 
   message("Reading ", basename(path))
   if (file_type == "parquet") {
     if (is.null(columns)) return(arrow::read_parquet(path))
-    return(arrow::read_parquet(path, col_select = dplyr::all_of(columns)))
+    available_columns <- names(arrow::open_dataset(path, format = "parquet"))
+    missing_columns <- setdiff(columns, available_columns)
+    selected_columns <- intersect(columns, available_columns)
+    if (length(missing_columns) > 0) {
+      warning(
+        "Missing requested column(s) in ", basename(path), ": ",
+        paste(missing_columns, collapse = ", "),
+        call. = FALSE
+      )
+    }
+    if (length(selected_columns) == 0) return(tibble::tibble())
+    return(arrow::read_parquet(path, col_select = dplyr::all_of(selected_columns)))
   }
   out <- readr::read_csv(path, show_col_types = FALSE)
-  if (!is.null(columns)) out <- out[, intersect(columns, names(out)), drop = FALSE]
+  if (!is.null(columns)) {
+    missing_columns <- setdiff(columns, names(out))
+    if (length(missing_columns) > 0) {
+      warning(
+        "Missing requested column(s) in ", basename(path), ": ",
+        paste(missing_columns, collapse = ", "),
+        call. = FALSE
+      )
+    }
+    out <- out[, intersect(columns, names(out)), drop = FALSE]
+  }
   out
 }
 

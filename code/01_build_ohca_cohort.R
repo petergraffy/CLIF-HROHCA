@@ -128,11 +128,11 @@ adt_min <- adt |>
   )
 
 icu_bounds <- adt_min |>
-  filter(stringr::str_detect(stringr::str_to_lower(.data$location_category), "icu")) |>
+  filter(stringr::str_detect(stringr::str_to_lower(.data$location_category), "icu"), !is.na(.data$in_dttm)) |>
   group_by(.data$hospitalization_id) |>
   summarise(
     first_icu_in = min(.data$in_dttm, na.rm = TRUE),
-    last_icu_out = max(.data$out_dttm, na.rm = TRUE),
+    last_icu_out = if (all(is.na(.data$out_dttm))) max(.data$in_dttm, na.rm = TRUE) else max(.data$out_dttm, na.rm = TRUE),
     n_icu_segments = n(),
     .groups = "drop"
   ) |>
@@ -235,7 +235,11 @@ if (!is.null(medication) && nrow(medication) > 0) {
       mar_action_group = stringr::str_to_lower(if ("mar_action_group" %in% names(medication)) as.character(.data$mar_action_group) else NA_character_)
     ) |>
     semi_join(ohca |> select("hospitalization_id"), by = "hospitalization_id") |>
-    filter(.data$med_group == "vasoactives", .data$med_category %in% vasoactive_categories, .data$mar_action_group != "not_administered") |>
+    filter(
+      .data$med_group == "vasoactives",
+      .data$med_category %in% vasoactive_categories,
+      is.na(.data$mar_action_group) | .data$mar_action_group != "not_administered"
+    ) |>
     distinct(.data$hospitalization_id)
   ohca <- ohca |>
     mutate(vasopressor_any = ifelse(.data$hospitalization_id %in% vasopressor_ids$hospitalization_id, 1L, 0L))
@@ -243,8 +247,9 @@ if (!is.null(medication) && nrow(medication) > 0) {
 
 ohca <- ohca |>
   mutate(
-    hospital_death = ifelse(.data$discharge_category == "Expired", 1L, 0L),
-    death_or_hospice = ifelse(.data$discharge_category == "Expired" | stringr::str_detect(stringr::str_to_lower(tidyr::replace_na(.data$discharge_category, "")), "hospice"), 1L, 0L)
+    discharge_category_clean = stringr::str_to_lower(tidyr::replace_na(.data$discharge_category, "")),
+    hospital_death = ifelse(stringr::str_detect(.data$discharge_category_clean, "expired|death|dead"), 1L, 0L),
+    death_or_hospice = ifelse(.data$hospital_death == 1L | stringr::str_detect(.data$discharge_category_clean, "hospice"), 1L, 0L)
   )
 
 summary_tbl <- tibble::tibble(

@@ -179,6 +179,13 @@ for (item in list(
 }
 
 if (dir.exists(figure_source_dir)) {
+  old_site_figures <- list.files(
+    figure_export_dir,
+    pattern = paste0("^", site_name, "_.*\\.png$"),
+    full.names = TRUE
+  )
+  if (length(old_site_figures) > 0) unlink(old_site_figures)
+
   figure_files <- list.files(
     figure_source_dir,
     pattern = "\\.png$",

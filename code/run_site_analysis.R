@@ -31,4 +31,4 @@ for (script in scripts) {
   if (status != 0) stop("Script failed: ", script, call. = FALSE)
 }
 
-message("\nSite analysis complete. Share only files in output/final/federated_exports with the coordinating center.")
+message("\nSite analysis complete. Share only aggregate files in output/final/federated_exports.")

@@ -106,7 +106,7 @@ p_curve <- ggplot(primary_curve, aes(x = tmax_mean_c, y = cumulative_rr)) +
   geom_vline(xintercept = unique(primary_curve$reference_temp_c), linetype = "dotted", color = "#1B4332") +
   labs(
     title = "Median-Referenced DLNM Association Between Tmax and OHCA ICU Admissions",
-    subtitle = "Primary warm-season negative-binomial DLNM adjusted for relative humidity",
+    subtitle = "Primary warm-season quasi-Poisson DLNM adjusted for relative humidity",
     x = "Daily assigned-county Tmax (C)",
     y = "Cumulative relative risk"
   ) +

@@ -50,7 +50,7 @@ The primary pooled effect is the log relative risk for the 95th percentile `tmax
 
 Primary model:
 
-- negative-binomial DLNM
+- quasi-Poisson DLNM
 - warm season only
 - same-day county-linked `tmax`
 - humidity adjusted

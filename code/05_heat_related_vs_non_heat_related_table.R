@@ -763,7 +763,12 @@ if (!is.null(medication) && nrow(medication) > 0) {
       med_group = stringr::str_to_lower(as.character(.data$med_group)),
       mar_action_group = stringr::str_to_lower(as.character(.data$mar_action_group))
     ) |>
-    filter(.data$med_group == "vasoactives", .data$med_category %in% vasoactive_categories, .data$mar_action_group != "not_administered", !is.na(.data$event_dttm)) |>
+    filter(
+      .data$med_group == "vasoactives",
+      .data$med_category %in% vasoactive_categories,
+      is.na(.data$mar_action_group) | .data$mar_action_group != "not_administered",
+      !is.na(.data$event_dttm)
+    ) |>
     select("hospitalization_id", "event_dttm")
 }
 
