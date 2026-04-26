@@ -452,6 +452,37 @@ plot_crrt_window_summary <- function(df, heat_definition, filename, title) {
   ggsave(file.path(FIGURE_DIR, filename), p, width = 8, height = 5.5, dpi = 300)
 }
 
+plot_crrt_window_comparison <- function(df, filename) {
+  if (nrow(df) == 0) return(invisible(NULL))
+  plot_df <- df |>
+    mutate(
+      heat_definition = factor(.data$heat_definition, levels = c("heat90", "heat95")),
+      window = factor(.data$window, levels = c("0-24h", "0-72h", "0-168h"))
+    )
+
+  p <- ggplot(plot_df, aes(x = .data$window, y = .data$crrt_pct, fill = .data$heat_related_ohca)) +
+    geom_col(position = position_dodge(width = 0.75), width = 0.65) +
+    geom_text(
+      aes(label = paste0(.data$n_crrt, "/", .data$n_group)),
+      position = position_dodge(width = 0.75),
+      vjust = -0.25,
+      size = 3
+    ) +
+    facet_wrap(~ heat_definition) +
+    scale_fill_manual(values = c("Heat-related OHCA" = "#BC3908", "Non-heat-related OHCA" = "#335C67")) +
+    labs(
+      title = "CRRT Initiation Windows by Heat Definition",
+      subtitle = "Heat95 is nested within heat90; labels show n CRRT / group N",
+      x = NULL,
+      y = "CRRT cumulative incidence (%)",
+      fill = NULL
+    ) +
+    theme_minimal(base_size = 11) +
+    theme(legend.position = "bottom", plot.title = element_text(face = "bold"))
+
+  ggsave(file.path(FIGURE_DIR, filename), p, width = 10, height = 5.8, dpi = 300)
+}
+
 plot_measure_trajectory <- function(df, heat_definition, output_type, filename, title) {
   plot_df <- df |>
     filter(.data$heat_definition == heat_definition, .data$output_type == output_type, !is.na(.data$median_value))
@@ -812,5 +843,6 @@ for (heat_def in HEAT_DEFINITIONS$heat_definition) {
   plot_renal_marker_summary(renal_marker_summary, heat_def, paste0("figure_", heat_def, "_renal_metabolic_marker_summary.png"), paste0("Renal and Metabolic Marker Summary: ", heat_def))
   plot_crrt_window_summary(crrt_window_summary, heat_def, paste0("figure_", heat_def, "_crrt_window_summary.png"), paste0("CRRT Initiation Windows: ", heat_def))
 }
+plot_crrt_window_comparison(crrt_window_summary, "figure_crrt_window_heat_definition_comparison.png")
 
 message("Wrote heat-related OHCA clinical phenotype outputs to ", OUTPUT_DIR)
