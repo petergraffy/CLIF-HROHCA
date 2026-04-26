@@ -35,12 +35,6 @@ The workflow can run with the required cohort/modeling tables only, but richer p
 
 `clif_ecmo_mcs` is not currently used because some extracts do not include enough device/status detail to distinguish true ECMO/MCS support.
 
-## Coordinator Script
-
-`90_pool_federated_results.R` pools site-level DLNM estimates after the coordinating center places site export files in `output/final/federated_exports/`.
-
-Current pooling includes scalar site-level DLNM estimates and pointwise DLNM curve pooling. Heat-related phenotype trajectory files are exported with counts so they can be pooled or plotted across sites by the coordinating center.
-
 ## Privacy Boundary
 
 Only `output/final/federated_exports/` should be shared. This folder contains aggregate CSVs and site-level PNG figures. The scripts intentionally keep row-level CLIF-derived working files under `output/intermediate/`, which is git-ignored and should remain local.

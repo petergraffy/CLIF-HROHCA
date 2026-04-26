@@ -83,7 +83,7 @@ Copy-Item config\config_template.json config\config.json
 }
 ```
 
-`site_name` must match a site in `reference/clif_hospital_geography.csv`.
+`site_name` must match a site in `reference/clif_hospital_geography.csv`. `file_type` can be `parquet` or `csv`; `fst` is not currently supported.
 
 4. Install or restore R packages:
 
@@ -155,22 +155,6 @@ output/final/federated_exports/figures/SITE_figure_*.png
 ```
 
 These include site-level DLNM plots, trajectory plots, cumulative incidence plots, CRRT-window plots, and renal/metabolic marker plots.
-
-## Coordinator Workflow
-
-The coordinating center places returned site exports in:
-
-```text
-output/final/federated_exports/
-```
-
-Then run:
-
-```powershell
-Rscript code\90_pool_federated_results.R
-```
-
-The current pooling script performs DerSimonian-Laird random-effects meta-analysis of site-level DLNM log relative risks and pointwise pooling of exported DLNM curve points. Reduced DLNM coefficient and variance-covariance exports are available for future multivariate meta-analysis of curve shape.
 
 ## Troubleshooting
 

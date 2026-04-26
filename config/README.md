@@ -24,4 +24,6 @@ If a site has multiple hospital IDs, each hospital should have a row in `referen
 
 The local CLIF table path can also be supplied with the `CLIF_TABLES_PATH` environment variable. `CLIF_FILE_TYPE` can override `file_type`.
 
+The workflow currently supports CLIF tables stored as `.parquet` or `.csv`. Sites do not need parquet files if they have CSV tables. `.fst` files are not supported yet.
+
 `config.json` is ignored by git so local paths are not committed.
