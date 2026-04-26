@@ -417,7 +417,7 @@ summarize_crrt_windows <- function(cohort, crrt_first_events) {
 }
 
 plot_renal_marker_summary <- function(df, heat_definition, filename, title) {
-  plot_df <- df |> filter(.data$heat_definition == heat_definition)
+  plot_df <- df |> filter(.data$heat_definition == .env$heat_definition)
   if (nrow(plot_df) == 0) return(invisible(NULL))
 
   p <- ggplot(plot_df, aes(x = .data$window, y = .data$median_value, color = .data$heat_related_ohca, group = .data$heat_related_ohca)) +
@@ -433,7 +433,7 @@ plot_renal_marker_summary <- function(df, heat_definition, filename, title) {
 }
 
 plot_crrt_window_summary <- function(df, heat_definition, filename, title) {
-  plot_df <- df |> filter(.data$heat_definition == heat_definition)
+  plot_df <- df |> filter(.data$heat_definition == .env$heat_definition)
   if (nrow(plot_df) == 0) return(invisible(NULL))
 
   p <- ggplot(plot_df, aes(x = .data$window, y = .data$crrt_pct, fill = .data$heat_related_ohca)) +
@@ -485,7 +485,7 @@ plot_crrt_window_comparison <- function(df, filename) {
 
 plot_measure_trajectory <- function(df, heat_definition, output_type, filename, title) {
   plot_df <- df |>
-    filter(.data$heat_definition == heat_definition, .data$output_type == output_type, !is.na(.data$median_value))
+    filter(.data$heat_definition == .env$heat_definition, .data$output_type == output_type, !is.na(.data$median_value))
   if (nrow(plot_df) == 0) return(invisible(NULL))
 
   p <- ggplot(plot_df, aes(x = .data$icu_hour, y = .data$median_value, color = .data$heat_related_ohca, fill = .data$heat_related_ohca)) +
@@ -503,7 +503,7 @@ plot_measure_trajectory <- function(df, heat_definition, output_type, filename, 
 
 plot_smoothed_measure_trajectory <- function(df, heat_definition, output_type, filename, title) {
   plot_df <- df |>
-    filter(.data$heat_definition == heat_definition, .data$output_type == output_type, !is.na(.data$median_value))
+    filter(.data$heat_definition == .env$heat_definition, .data$output_type == output_type, !is.na(.data$median_value))
   if (nrow(plot_df) == 0) return(invisible(NULL))
 
   p <- ggplot(plot_df, aes(x = .data$icu_hour, y = .data$median_value, color = .data$heat_related_ohca, fill = .data$heat_related_ohca)) +
@@ -527,7 +527,7 @@ plot_smoothed_measure_trajectory <- function(df, heat_definition, output_type, f
 }
 
 plot_support_trajectory <- function(df, heat_definition, filename, title) {
-  plot_df <- df |> filter(.data$heat_definition == heat_definition, !is.na(.data$prevalence_pct))
+  plot_df <- df |> filter(.data$heat_definition == .env$heat_definition, !is.na(.data$prevalence_pct))
   if (nrow(plot_df) == 0) return(invisible(NULL))
 
   p <- ggplot(plot_df, aes(x = .data$icu_hour, y = .data$prevalence_pct, color = .data$heat_related_ohca)) +
@@ -542,7 +542,7 @@ plot_support_trajectory <- function(df, heat_definition, filename, title) {
 }
 
 plot_smoothed_support_trajectory <- function(df, heat_definition, filename, title) {
-  plot_df <- df |> filter(.data$heat_definition == heat_definition, !is.na(.data$prevalence_pct))
+  plot_df <- df |> filter(.data$heat_definition == .env$heat_definition, !is.na(.data$prevalence_pct))
   if (nrow(plot_df) == 0) return(invisible(NULL))
 
   p <- ggplot(plot_df, aes(x = .data$icu_hour, y = .data$prevalence_pct, color = .data$heat_related_ohca)) +
@@ -563,7 +563,7 @@ plot_smoothed_support_trajectory <- function(df, heat_definition, filename, titl
 }
 
 plot_cumulative_incidence <- function(df, heat_definition, filename, title) {
-  plot_df <- df |> filter(.data$heat_definition == heat_definition, !is.na(.data$cumulative_pct))
+  plot_df <- df |> filter(.data$heat_definition == .env$heat_definition, !is.na(.data$cumulative_pct))
   if (nrow(plot_df) == 0) return(invisible(NULL))
 
   p <- ggplot(plot_df, aes(x = .data$icu_hour, y = .data$cumulative_pct, color = .data$heat_related_ohca)) +
