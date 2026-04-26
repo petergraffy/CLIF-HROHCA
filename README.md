@@ -69,8 +69,16 @@ For each hospitalization, the workflow keeps the patient county if it is the hos
 
 2. Copy the config template:
 
+Windows PowerShell:
+
 ```powershell
 Copy-Item config\config_template.json config\config.json
+```
+
+macOS/Linux:
+
+```bash
+cp config/config_template.json config/config.json
 ```
 
 3. Edit `config/config.json`:
@@ -87,14 +95,30 @@ Copy-Item config\config_template.json config\config.json
 
 4. Install or restore R packages:
 
+Windows PowerShell:
+
 ```powershell
 Rscript code\00_install_or_restore_packages.R
 ```
 
+macOS/Linux:
+
+```bash
+Rscript code/00_install_or_restore_packages.R
+```
+
 5. Run the full site workflow:
+
+Windows PowerShell:
 
 ```powershell
 Rscript code\run_site_analysis.R
+```
+
+macOS/Linux:
+
+```bash
+Rscript code/run_site_analysis.R
 ```
 
 6. Review outputs locally:

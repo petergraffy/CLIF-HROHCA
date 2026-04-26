@@ -4,11 +4,33 @@ The site-facing workflow is R-only and uses numbered scripts in this folder.
 
 Most sites should run:
 
-```r
+Windows PowerShell:
+
+```powershell
+Rscript code\run_site_analysis.R
+```
+
+macOS/Linux:
+
+```bash
 Rscript code/run_site_analysis.R
 ```
 
 The numbered scripts can also be run one at a time for debugging.
+
+For example, to install packages only:
+
+Windows PowerShell:
+
+```powershell
+Rscript code\00_install_or_restore_packages.R
+```
+
+macOS/Linux:
+
+```bash
+Rscript code/00_install_or_restore_packages.R
+```
 
 ## Site Scripts
 
