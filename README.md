@@ -19,6 +19,7 @@ The workflow produces:
 - ICU-hour trajectories for vitals, labs, organ support, and cumulative incidence.
 - Renal/metabolic phenotype summaries, including CRRT initiation windows and early creatinine/BUN/electrolyte/lactate summaries.
 - Supplementary OHCA outcome models for same-day heat and 12-month pollution exposures.
+- CONSORT-style aggregate cohort flow counts and a site-level cohort flow diagram.
 
 ## Required Inputs
 
@@ -149,6 +150,7 @@ Core analytic outputs:
 - `SITE_dlnm_time_sensitivity.csv`
 - `SITE_table1.csv`
 - `SITE_outcomes.csv`
+- `SITE_cohort_flow.csv`
 
 Heat-related OHCA phenotype outputs:
 
@@ -186,7 +188,7 @@ Visual QC figures:
 output/final/federated_exports/figures/SITE_figure_*.png
 ```
 
-These include site-level DLNM plots, trajectory plots, cumulative incidence plots, CRRT-window plots, and renal/metabolic marker plots.
+These include site-level DLNM plots, trajectory plots, cumulative incidence plots, CRRT-window plots, renal/metabolic marker plots, and the cohort flow diagram.
 
 ## Troubleshooting
 

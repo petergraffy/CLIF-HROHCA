@@ -71,10 +71,13 @@ continuous_models_path <- file.path(repo_root, "output", "final", "ohca_outcomes
 pollution_binary_models_path <- file.path(repo_root, "output", "final", "ohca_outcomes", "ohca_pollution_12m_binary_outcome_models.csv")
 pollution_continuous_models_path <- file.path(repo_root, "output", "final", "ohca_outcomes", "ohca_pollution_12m_continuous_outcome_models.csv")
 adverse_rates_path <- file.path(repo_root, "output", "final", "ohca_outcomes", "ohca_heat_adverse_outcome_rates.csv")
+cohort_flow_path <- file.path(repo_root, "output", "final", "quality_checks", "cohort_flow.csv")
+cohort_flow_figure_path <- file.path(repo_root, "output", "final", "quality_checks", "cohort_flow_diagram.png")
 denominator_audit_path <- file.path(repo_root, "output", "final", "quality_checks", "model_denominator_audit.csv")
 icu_timing_path <- file.path(repo_root, "output", "final", "quality_checks", "ohca_admission_to_icu_timing_summary.csv")
 icu_timing_bins_path <- file.path(repo_root, "output", "final", "quality_checks", "ohca_admission_to_icu_timing_bins.csv")
 care_pathway_path <- file.path(repo_root, "output", "final", "quality_checks", "ohca_pre_icu_care_pathway_summary.csv")
+first_location_path <- file.path(repo_root, "output", "final", "quality_checks", "ohca_first_location_summary.csv")
 
 results <- read.csv(results_path, stringsAsFactors = FALSE)
 results$site_name <- site_name
@@ -196,10 +199,12 @@ if (file.exists(adverse_rates_path)) {
 }
 
 for (item in list(
+  list(path = cohort_flow_path, suffix = "cohort_flow"),
   list(path = denominator_audit_path, suffix = "denominator_audit"),
   list(path = icu_timing_path, suffix = "icu_timing_summary"),
   list(path = icu_timing_bins_path, suffix = "icu_timing_bins"),
-  list(path = care_pathway_path, suffix = "care_pathway_summary")
+  list(path = care_pathway_path, suffix = "care_pathway_summary"),
+  list(path = first_location_path, suffix = "first_location_summary")
 )) {
   if (file.exists(item$path)) {
     dat <- read.csv(item$path, stringsAsFactors = FALSE)
@@ -225,6 +230,14 @@ if (dir.exists(figure_source_dir)) {
     dest <- file.path(figure_export_dir, paste0(site_name, "_", basename(figure_path)))
     file.copy(figure_path, dest, overwrite = TRUE)
   }
+}
+
+if (file.exists(cohort_flow_figure_path)) {
+  file.copy(
+    cohort_flow_figure_path,
+    file.path(figure_export_dir, paste0(site_name, "_figure_cohort_flow_diagram.png")),
+    overwrite = TRUE
+  )
 }
 
 message("Wrote federated site export files to ", output_dir)
