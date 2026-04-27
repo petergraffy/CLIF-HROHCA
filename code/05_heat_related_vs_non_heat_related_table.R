@@ -818,7 +818,7 @@ lab_trajectories_smoothed_all_year <- summarize_smoothed_hourly_measurements(
 
 respiratory <- read_clif_table(
   tables_path, file_type, "respiratory_support",
-  columns = c("hospitalization_id", "recorded_dttm", "device_category", "artificial_airway", "tracheostomy"),
+  columns = c("hospitalization_id", "recorded_dttm", "device_category"),
   required = FALSE
 )
 imv_events <- NULL
@@ -827,10 +827,7 @@ if (!is.null(respiratory) && nrow(respiratory) > 0) {
     transmute(
       hospitalization_id = as.character(.data$hospitalization_id),
       event_dttm = as_utc_datetime(.data$recorded_dttm),
-      imv_row =
-        stringr::str_to_upper(tidyr::replace_na(as.character(.data$device_category), "")) == "IMV" |
-        stringr::str_to_upper(tidyr::replace_na(as.character(.data$artificial_airway), "")) %in% c("ETT", "TRACH") |
-        tidyr::replace_na(suppressWarnings(as.numeric(.data$tracheostomy)), 0) == 1
+      imv_row = stringr::str_to_upper(tidyr::replace_na(as.character(.data$device_category), "")) %in% c("IMV", "VENT")
     ) |>
     filter(.data$imv_row, !is.na(.data$event_dttm)) |>
     select("hospitalization_id", "event_dttm")

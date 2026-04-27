@@ -192,16 +192,11 @@ if (!is.null(respiratory) && nrow(respiratory) > 0) {
     transmute(
       hospitalization_id = as.character(.data$hospitalization_id),
       recorded_dttm = as_utc_datetime(.data$recorded_dttm),
-      device_category = if ("device_category" %in% names(respiratory)) as.character(.data$device_category) else NA_character_,
-      artificial_airway = if ("artificial_airway" %in% names(respiratory)) as.character(.data$artificial_airway) else NA_character_,
-      tracheostomy = if ("tracheostomy" %in% names(respiratory)) suppressWarnings(as.numeric(.data$tracheostomy)) else NA_real_
+      device_category = if ("device_category" %in% names(respiratory)) as.character(.data$device_category) else NA_character_
     ) |>
     semi_join(ohca |> select("hospitalization_id"), by = "hospitalization_id") |>
     mutate(
-      imv_row =
-        stringr::str_to_upper(tidyr::replace_na(.data$device_category, "")) == "IMV" |
-          stringr::str_to_upper(tidyr::replace_na(.data$artificial_airway, "")) %in% c("ETT", "TRACH") |
-          tidyr::replace_na(.data$tracheostomy, 0) == 1
+      imv_row = stringr::str_to_upper(tidyr::replace_na(.data$device_category, "")) %in% c("IMV", "VENT")
     )
   imv_summary <- resp |>
     filter(.data$imv_row, !is.na(.data$recorded_dttm)) |>

@@ -81,8 +81,13 @@ read_clif_table <- function(tables_path, file_type, table_name, columns = NULL, 
         call. = FALSE
       )
     }
-    if (length(selected_columns) == 0) return(tibble::tibble())
-    return(arrow::read_parquet(path, col_select = dplyr::all_of(selected_columns)))
+    out <- if (length(selected_columns) == 0) {
+      tibble::tibble()
+    } else {
+      arrow::read_parquet(path, col_select = dplyr::all_of(selected_columns))
+    }
+    for (missing_col in missing_columns) out[[missing_col]] <- NA
+    return(out[, columns, drop = FALSE])
   }
   out <- readr::read_csv(path, show_col_types = FALSE)
   if (!is.null(columns)) {
@@ -94,7 +99,8 @@ read_clif_table <- function(tables_path, file_type, table_name, columns = NULL, 
         call. = FALSE
       )
     }
-    out <- out[, intersect(columns, names(out)), drop = FALSE]
+    for (missing_col in missing_columns) out[[missing_col]] <- NA
+    out <- out[, columns, drop = FALSE]
   }
   out
 }
