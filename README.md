@@ -40,10 +40,6 @@ Recommended for phenotype/outcome outputs:
 - `clif_vitals`: vital sign trajectories.
 - `clif_crrt_therapy`: CRRT initiation and trajectory outputs.
 
-Optional/experimental:
-
-- `clif_ecmo_mcs` is not currently used because some local extracts contain only `hospitalization_id` and `recorded_dttm`, which is not specific enough to identify true ECMO/MCS use.
-
 ### Exposome Files
 
 The root `exposome/` folder contains county-level environmental inputs:
@@ -196,7 +192,6 @@ These include site-level DLNM plots, trajectory plots, cumulative incidence plot
 - If `site_name` fails, confirm it exactly matches `reference/clif_hospital_geography.csv`.
 - If optional tables are missing, the workflow should skip or partially populate the corresponding phenotype outputs.
 - If figure PNGs look duplicated across heat90 and heat95, rerun the latest code; plot filtering was corrected to keep heat definitions separate.
-- If ECMO/MCS appears implausibly frequent, do not interpret it unless the local table has device/status fields sufficient to identify true ECMO/MCS use.
 
 ## Privacy Boundary
 

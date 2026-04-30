@@ -55,8 +55,6 @@ The workflow can run with the required cohort/modeling tables only, but richer p
 - `clif_medication_admin_continuous`: vasopressor trajectories.
 - `clif_crrt_therapy`: CRRT trajectories and initiation windows.
 
-`clif_ecmo_mcs` is not currently used because some extracts do not include enough device/status detail to distinguish true ECMO/MCS support.
-
 ## Privacy Boundary
 
 Only `output/final/federated_exports/` should be shared. This folder contains aggregate CSVs and site-level PNG figures, including the aggregate cohort flow diagram. The scripts intentionally keep row-level CLIF-derived working files under `output/intermediate/`, which is git-ignored and should remain local.
