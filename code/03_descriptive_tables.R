@@ -5,7 +5,14 @@ get_script_path <- function() {
   args <- commandArgs(trailingOnly = FALSE)
   match <- grep(file_arg, args, value = TRUE)
   if (length(match) == 0) {
-    stop("Could not determine script path from commandArgs().")
+    ofiles <- vapply(sys.frames(), function(frame) if (is.null(frame$ofile)) NA_character_ else frame$ofile, character(1))
+    ofiles <- stats::na.omit(ofiles)
+    if (length(ofiles) > 0) return(normalizePath(tail(ofiles, 1), winslash = "/", mustWork = TRUE))
+    if (requireNamespace("rstudioapi", quietly = TRUE) && rstudioapi::isAvailable()) {
+      active_path <- rstudioapi::getActiveDocumentContext()$path
+      if (nzchar(active_path)) return(normalizePath(active_path, winslash = "/", mustWork = TRUE))
+    }
+    stop("Could not determine script path. Run with Rscript or source the script from RStudio.")
   }
   normalizePath(sub(file_arg, "", match[[1]]), winslash = "/", mustWork = TRUE)
 }
@@ -60,10 +67,10 @@ ohca$county_fips_was_overridden <- as.integer(ohca$county_fips_was_overridden)
 ohca$hospital_los_days <- as.numeric(difftime(ohca$discharge_dttm, ohca$admission_dttm, units = "days"))
 ohca$time_to_icu_days <- as.numeric(difftime(ohca$first_icu_in, ohca$admission_dttm, units = "days"))
 if (!"hospital_death" %in% names(ohca)) {
-  ohca$hospital_death <- ifelse(ohca$discharge_category == "Expired", 1L, 0L)
+  ohca$hospital_death <- ifelse(is_expired_discharge(ohca$discharge_category), 1L, 0L)
 }
 if (!"death_or_hospice" %in% names(ohca)) {
-  ohca$death_or_hospice <- ifelse(ohca$discharge_category == "Expired" | grepl("hospice", ohca$discharge_category, ignore.case = TRUE), 1L, 0L)
+  ohca$death_or_hospice <- ifelse(is_expired_discharge(ohca$discharge_category) | grepl("hospice", ohca$discharge_category, ignore.case = TRUE), 1L, 0L)
 }
 if (!"imv_any" %in% names(ohca)) ohca$imv_any <- NA_integer_
 if (!"imv_duration_hours" %in% names(ohca)) ohca$imv_duration_hours <- NA_real_

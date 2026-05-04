@@ -4,7 +4,16 @@ get_script_path <- function() {
   file_arg <- "--file="
   args <- commandArgs(trailingOnly = FALSE)
   match <- grep(file_arg, args, value = TRUE)
-  if (length(match) == 0) stop("Could not determine script path from commandArgs().")
+  if (length(match) == 0) {
+    ofiles <- vapply(sys.frames(), function(frame) if (is.null(frame$ofile)) NA_character_ else frame$ofile, character(1))
+    ofiles <- stats::na.omit(ofiles)
+    if (length(ofiles) > 0) return(normalizePath(tail(ofiles, 1), winslash = "/", mustWork = TRUE))
+    if (requireNamespace("rstudioapi", quietly = TRUE) && rstudioapi::isAvailable()) {
+      active_path <- rstudioapi::getActiveDocumentContext()$path
+      if (nzchar(active_path)) return(normalizePath(active_path, winslash = "/", mustWork = TRUE))
+    }
+    stop("Could not determine script path. Run with Rscript or source the script from RStudio.")
+  }
   normalizePath(sub(file_arg, "", match[[1]]), winslash = "/", mustWork = TRUE)
 }
 
@@ -579,11 +588,11 @@ plot_cumulative_incidence <- function(df, heat_definition, filename, title) {
 
 ohca_raw <- readr::read_csv(OHCA_PATH, show_col_types = FALSE, col_types = readr::cols(.default = readr::col_guess()))
 if (!"hospital_death" %in% names(ohca_raw)) {
-  ohca_raw$hospital_death <- ifelse(ohca_raw$discharge_category == "Expired", 1L, 0L)
+  ohca_raw$hospital_death <- ifelse(is_expired_discharge(ohca_raw$discharge_category), 1L, 0L)
 }
 if (!"death_or_hospice" %in% names(ohca_raw)) {
   ohca_raw$death_or_hospice <- ifelse(
-    ohca_raw$discharge_category == "Expired" |
+    is_expired_discharge(ohca_raw$discharge_category) |
       stringr::str_detect(stringr::str_to_lower(tidyr::replace_na(ohca_raw$discharge_category, "")), "hospice"),
     1L,
     0L
@@ -610,7 +619,7 @@ ohca <- ohca_raw |>
     vasopressor_any = suppressWarnings(as.integer(.data$vasopressor_any)),
     county_fips = normalize_county_fips(.data$county_fips),
     age_group = ifelse(.data$age_at_admission >= 65, ">=65", "<65"),
-    race_group = ifelse(.data$race_category == "Black or African American", "Black", "Non-Black"),
+    race_group = ifelse(is_black_race(.data$race_category), "Black", "Non-Black"),
     icu_los_days = suppressWarnings(as.numeric(.data$icu_los_hours)) / 24,
     imv_duration_days = suppressWarnings(as.numeric(.data$imv_duration_hours)) / 24
   )
@@ -660,13 +669,13 @@ table2_all_year_sensitivity <- table2_all_year_all |> filter(.data$heat_definiti
 by_discharge <- cohort_all_defs |>
   count(.data$heat_definition, .data$heat_related_ohca, .data$discharge_category, name = "n") |>
   group_by(.data$heat_definition, .data$heat_related_ohca) |>
-  mutate(pct = safe_pct(.data$n, sum(.data$n))) |>
+  mutate(pct = 100 * .data$n / sum(.data$n)) |>
   ungroup()
 
 by_discharge_all_year <- cohort_all_defs_all_year |>
   count(.data$heat_definition, .data$heat_related_ohca, .data$discharge_category, name = "n") |>
   group_by(.data$heat_definition, .data$heat_related_ohca) |>
-  mutate(pct = safe_pct(.data$n, sum(.data$n))) |>
+  mutate(pct = 100 * .data$n / sum(.data$n)) |>
   ungroup()
 
 denominators <- hourly_denominators(cohort_all_defs, TRAJECTORY_HOURS)

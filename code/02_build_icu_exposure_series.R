@@ -4,7 +4,16 @@ get_script_path <- function() {
   file_arg <- "--file="
   args <- commandArgs(trailingOnly = FALSE)
   match <- grep(file_arg, args, value = TRUE)
-  if (length(match) == 0) stop("Could not determine script path from commandArgs().")
+  if (length(match) == 0) {
+    ofiles <- vapply(sys.frames(), function(frame) if (is.null(frame$ofile)) NA_character_ else frame$ofile, character(1))
+    ofiles <- stats::na.omit(ofiles)
+    if (length(ofiles) > 0) return(normalizePath(tail(ofiles, 1), winslash = "/", mustWork = TRUE))
+    if (requireNamespace("rstudioapi", quietly = TRUE) && rstudioapi::isAvailable()) {
+      active_path <- rstudioapi::getActiveDocumentContext()$path
+      if (nzchar(active_path)) return(normalizePath(active_path, winslash = "/", mustWork = TRUE))
+    }
+    stop("Could not determine script path. Run with Rscript or source the script from RStudio.")
+  }
   normalizePath(sub(file_arg, "", match[[1]]), winslash = "/", mustWork = TRUE)
 }
 
@@ -46,7 +55,7 @@ hosp <- hospitalization |>
     admission_dttm = as_utc_datetime(.data$admission_dttm),
     age_at_admission = suppressWarnings(as.numeric(.data$age_at_admission)),
     county_fips = normalize_county_fips(if ("county_code" %in% names(hospitalization)) .data$county_code else NA_character_),
-    admission_date = as.Date(.data$admission_dttm)
+    admission_date = as_clif_date(.data$admission_dttm)
   ) |>
   filter(
     !is.na(.data$admission_dttm),

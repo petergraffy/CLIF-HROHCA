@@ -4,20 +4,22 @@ get_script_path <- function() {
   file_arg <- "--file="
   args <- commandArgs(trailingOnly = FALSE)
   match <- grep(file_arg, args, value = TRUE)
-  if (length(match) == 0) stop("Could not determine script path from commandArgs().")
+  if (length(match) == 0) {
+    ofiles <- vapply(sys.frames(), function(frame) if (is.null(frame$ofile)) NA_character_ else frame$ofile, character(1))
+    ofiles <- stats::na.omit(ofiles)
+    if (length(ofiles) > 0) return(normalizePath(tail(ofiles, 1), winslash = "/", mustWork = TRUE))
+    if (requireNamespace("rstudioapi", quietly = TRUE) && rstudioapi::isAvailable()) {
+      active_path <- rstudioapi::getActiveDocumentContext()$path
+      if (nzchar(active_path)) return(normalizePath(active_path, winslash = "/", mustWork = TRUE))
+    }
+    stop("Could not determine script path. Run with Rscript or source the script from RStudio.")
+  }
   normalizePath(sub(file_arg, "", match[[1]]), winslash = "/", mustWork = TRUE)
 }
 
 repo_root <- normalizePath(file.path(dirname(get_script_path()), ".."), winslash = "/", mustWork = TRUE)
-
-ensure_user_library <- function() {
-  version_parts <- strsplit(as.character(getRversion()), "\\.")[[1]]
-  version_stub <- paste(version_parts[1], version_parts[2], sep = ".")
-  user_lib <- file.path(repo_root, ".r-user-lib", version_stub)
-  dir.create(user_lib, recursive = TRUE, showWarnings = FALSE)
-  .libPaths(c(user_lib, .libPaths()))
-}
-ensure_user_library()
+source(file.path(repo_root, "code", "00_project_functions.R"))
+ensure_user_library(repo_root)
 
 suppressPackageStartupMessages({
   library(dlnm)
@@ -173,7 +175,7 @@ model_df <- model_df[model_df$month %in% WARM_MONTHS & !is.na(model_df$icu_patie
 cohort <- read.csv(ohca_cohort_path, stringsAsFactors = FALSE)
 cohort$admission_date <- as.Date(cohort$admission_date)
 cohort$age_group <- ifelse(as.numeric(cohort$age_at_admission) >= 65, ">=65", "<65")
-cohort$race_group <- ifelse(cohort$race_category == "Black or African American", "Black", "Non-Black")
+cohort$race_group <- ifelse(is_black_race(cohort$race_category), "Black", "Non-Black")
 
 make_stratum_daily_counts <- function(subset_df, label) {
   out <- aggregate(hospitalization_id ~ admission_date, data = subset_df, FUN = function(x) length(unique(x)))
@@ -184,8 +186,8 @@ make_stratum_daily_counts <- function(subset_df, label) {
 
 strata_counts <- list(
   overall = daily_counts,
-  male = make_stratum_daily_counts(cohort[cohort$sex_category == "Male", ], "Male"),
-  female = make_stratum_daily_counts(cohort[cohort$sex_category == "Female", ], "Female"),
+  male = make_stratum_daily_counts(cohort[is_male(cohort$sex_category), ], "Male"),
+  female = make_stratum_daily_counts(cohort[is_female(cohort$sex_category), ], "Female"),
   age_lt65 = make_stratum_daily_counts(cohort[cohort$age_group == "<65", ], "<65"),
   age_ge65 = make_stratum_daily_counts(cohort[cohort$age_group == ">=65", ], ">=65"),
   race_black = make_stratum_daily_counts(cohort[cohort$race_group == "Black", ], "Black"),

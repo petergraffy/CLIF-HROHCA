@@ -4,7 +4,16 @@ get_script_path <- function() {
   file_arg <- "--file="
   args <- commandArgs(trailingOnly = FALSE)
   match <- grep(file_arg, args, value = TRUE)
-  if (length(match) == 0) stop("Could not determine script path from commandArgs().")
+  if (length(match) == 0) {
+    ofiles <- vapply(sys.frames(), function(frame) if (is.null(frame$ofile)) NA_character_ else frame$ofile, character(1))
+    ofiles <- stats::na.omit(ofiles)
+    if (length(ofiles) > 0) return(normalizePath(tail(ofiles, 1), winslash = "/", mustWork = TRUE))
+    if (requireNamespace("rstudioapi", quietly = TRUE) && rstudioapi::isAvailable()) {
+      active_path <- rstudioapi::getActiveDocumentContext()$path
+      if (nzchar(active_path)) return(normalizePath(active_path, winslash = "/", mustWork = TRUE))
+    }
+    stop("Could not determine script path. Run with Rscript or source the script from RStudio.")
+  }
   normalizePath(sub(file_arg, "", match[[1]]), winslash = "/", mustWork = TRUE)
 }
 
@@ -62,6 +71,7 @@ derive_poa_flag <- function(df, diagnosis_source) {
 }
 
 config <- load_project_config(repo_root)
+validate_site_name(config, repo_root)
 tables_path <- resolve_tables_path(config)
 file_type <- resolve_file_type(config)
 site_name <- config$site_name %||% Sys.getenv("CLIF_SITE_NAME", unset = "unknown_site")
@@ -109,7 +119,7 @@ hosp <- hospitalization |>
   ) |>
   mutate(
     county_fips = normalize_county_fips(.data$county_code),
-    admission_date = as.Date(.data$admission_dttm)
+    admission_date = as_clif_date(.data$admission_dttm)
   ) |>
   filter(
     !is.na(.data$admission_dttm),
@@ -243,7 +253,7 @@ if (!is.null(medication) && nrow(medication) > 0) {
 ohca <- ohca |>
   mutate(
     discharge_category_clean = stringr::str_to_lower(tidyr::replace_na(.data$discharge_category, "")),
-    hospital_death = ifelse(stringr::str_detect(.data$discharge_category_clean, "expired|death|dead"), 1L, 0L),
+    hospital_death = ifelse(is_expired_discharge(.data$discharge_category), 1L, 0L),
     death_or_hospice = ifelse(.data$hospital_death == 1L | stringr::str_detect(.data$discharge_category_clean, "hospice"), 1L, 0L)
   )
 

@@ -43,6 +43,32 @@ load_project_config <- function(repo_root) {
   jsonlite::fromJSON(config_path, simplifyVector = TRUE)
 }
 
+validate_site_name <- function(config, repo_root) {
+  site_name_raw <- if (is.null(config$site_name) || length(config$site_name) == 0) "" else config$site_name
+  site_name <- stringr::str_trim(as.character(site_name_raw))
+  geography_path <- file.path(repo_root, "reference", "clif_hospital_geography.csv")
+
+  if (!nzchar(site_name)) stop("config$site_name is required.")
+  if (!file.exists(geography_path)) stop("Missing reference/clif_hospital_geography.csv")
+
+  geography_sites <- readr::read_csv(
+    geography_path,
+    show_col_types = FALSE,
+    col_types = readr::cols(.default = readr::col_character())
+  ) |>
+    dplyr::pull("site_name") |>
+    stringr::str_trim()
+
+  if (!site_name %in% geography_sites) {
+    stop(
+      "config$site_name = '", site_name, "' was not found in reference/clif_hospital_geography.csv. ",
+      "Use one of: ", paste(sort(unique(geography_sites)), collapse = ", ")
+    )
+  }
+
+  invisible(site_name)
+}
+
 `%||%` <- function(x, y) {
   if (is.null(x) || length(x) == 0 || (length(x) == 1 && is.na(x))) y else x
 }
@@ -107,6 +133,36 @@ read_clif_table <- function(tables_path, file_type, table_name, columns = NULL, 
 
 as_utc_datetime <- function(x) {
   lubridate::as_datetime(x, tz = "UTC")
+}
+
+as_clif_date <- function(x) {
+  if (inherits(x, "Date")) return(x)
+  date_part <- stringr::str_extract(as.character(x), "^\\d{4}-\\d{2}-\\d{2}")
+  as.Date(date_part)
+}
+
+normalize_category <- function(x) {
+  x |>
+    tidyr::replace_na("") |>
+    as.character() |>
+    stringr::str_squish() |>
+    stringr::str_to_lower()
+}
+
+is_black_race <- function(x) {
+  normalize_category(x) %in% c("black", "black or african american", "african american")
+}
+
+is_male <- function(x) {
+  normalize_category(x) == "male"
+}
+
+is_female <- function(x) {
+  normalize_category(x) == "female"
+}
+
+is_expired_discharge <- function(x) {
+  stringr::str_detect(normalize_category(x), "expired|death|dead")
 }
 
 normalize_county_fips <- function(x) {
@@ -248,6 +304,10 @@ read_exposome_pollution <- function(repo_root, filename, value_col) {
 }
 
 safe_pct <- function(x, denom) {
+  if (length(denom) == 1L) {
+    if (is.na(denom) || denom <= 0) return(rep(NA_real_, length(x)))
+    return(100 * x / denom)
+  }
   ifelse(denom > 0, 100 * x / denom, NA_real_)
 }
 

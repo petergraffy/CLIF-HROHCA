@@ -4,7 +4,16 @@ get_script_path <- function() {
   file_arg <- "--file="
   args <- commandArgs(trailingOnly = FALSE)
   match <- grep(file_arg, args, value = TRUE)
-  if (length(match) == 0) stop("Could not determine script path from commandArgs().")
+  if (length(match) == 0) {
+    ofiles <- vapply(sys.frames(), function(frame) if (is.null(frame$ofile)) NA_character_ else frame$ofile, character(1))
+    ofiles <- stats::na.omit(ofiles)
+    if (length(ofiles) > 0) return(normalizePath(tail(ofiles, 1), winslash = "/", mustWork = TRUE))
+    if (requireNamespace("rstudioapi", quietly = TRUE) && rstudioapi::isAvailable()) {
+      active_path <- rstudioapi::getActiveDocumentContext()$path
+      if (nzchar(active_path)) return(normalizePath(active_path, winslash = "/", mustWork = TRUE))
+    }
+    stop("Could not determine script path. Run with Rscript or source the script from RStudio.")
+  }
   normalizePath(sub(file_arg, "", match[[1]]), winslash = "/", mustWork = TRUE)
 }
 
@@ -80,8 +89,8 @@ extract_model_term <- function(fit, term, outcome, exposure_label, n, events) {
 fit_outcome_model <- function(df, outcome, exposure, exposure_label) {
   model_df <- df
   model_df$tmax_per_5c <- model_df$tmax_mean_c / 5
-  model_df$race_group <- ifelse(model_df$race_category == "Black or African American", "Black", "Non-Black")
-  model_df$sex_group <- ifelse(model_df$sex_category %in% c("Male", "Female"), model_df$sex_category, "Other/Unknown")
+  model_df$race_group <- ifelse(is_black_race(model_df$race_category), "Black", "Non-Black")
+  model_df$sex_group <- ifelse(is_male(model_df$sex_category), "Male", ifelse(is_female(model_df$sex_category), "Female", "Other/Unknown"))
   time_df <- max(3L, length(unique(model_df$year)) * 4L)
   covariates <- c(
     exposure,
@@ -127,8 +136,8 @@ fit_continuous_outcome_model <- function(df, outcome, exposure, exposure_label, 
     model_df <- model_df[model_df[[subset_var]] == subset_value, , drop = FALSE]
   }
   model_df$tmax_per_5c <- model_df$tmax_mean_c / 5
-  model_df$race_group <- ifelse(model_df$race_category == "Black or African American", "Black", "Non-Black")
-  model_df$sex_group <- ifelse(model_df$sex_category %in% c("Male", "Female"), model_df$sex_category, "Other/Unknown")
+  model_df$race_group <- ifelse(is_black_race(model_df$race_category), "Black", "Non-Black")
+  model_df$sex_group <- ifelse(is_male(model_df$sex_category), "Male", ifelse(is_female(model_df$sex_category), "Female", "Other/Unknown"))
   model_df$outcome_log1p <- log1p(model_df[[outcome]])
   time_df <- max(3L, length(unique(model_df$year)) * 4L)
   covariates <- c(
@@ -209,8 +218,8 @@ pollution_scale_label <- function(x, label) {
 
 fit_pollution_binary_outcome_model <- function(df, outcome, exposure, exposure_label, adjustment_set = "single_pollutant") {
   model_df <- df
-  model_df$race_group <- ifelse(model_df$race_category == "Black or African American", "Black", "Non-Black")
-  model_df$sex_group <- ifelse(model_df$sex_category %in% c("Male", "Female"), model_df$sex_category, "Other/Unknown")
+  model_df$race_group <- ifelse(is_black_race(model_df$race_category), "Black", "Non-Black")
+  model_df$sex_group <- ifelse(is_male(model_df$sex_category), "Male", ifelse(is_female(model_df$sex_category), "Female", "Other/Unknown"))
   model_df$month_factor <- factor(model_df$month)
   scale_info <- pollution_scale_label(model_df[[exposure]], exposure_label)
   model_df$pollution_scaled <- model_df[[exposure]] / scale_info$scale
@@ -275,8 +284,8 @@ fit_pollution_binary_outcome_model <- function(df, outcome, exposure, exposure_l
 fit_pollution_continuous_outcome_model <- function(df, outcome, exposure, exposure_label, subset_var = NULL, subset_value = NULL, adjustment_set = "single_pollutant") {
   model_df <- df
   if (!is.null(subset_var)) model_df <- model_df[model_df[[subset_var]] == subset_value, , drop = FALSE]
-  model_df$race_group <- ifelse(model_df$race_category == "Black or African American", "Black", "Non-Black")
-  model_df$sex_group <- ifelse(model_df$sex_category %in% c("Male", "Female"), model_df$sex_category, "Other/Unknown")
+  model_df$race_group <- ifelse(is_black_race(model_df$race_category), "Black", "Non-Black")
+  model_df$sex_group <- ifelse(is_male(model_df$sex_category), "Male", ifelse(is_female(model_df$sex_category), "Female", "Other/Unknown"))
   model_df$month_factor <- factor(model_df$month)
   model_df$outcome_log1p <- log1p(model_df[[outcome]])
   scale_info <- pollution_scale_label(model_df[[exposure]], exposure_label)
@@ -350,10 +359,10 @@ ohca$discharge_dttm <- as.POSIXct(ohca$discharge_dttm, tz = "UTC")
 ohca$age_at_admission <- as.numeric(ohca$age_at_admission)
 ohca$hospital_los_days <- as.numeric(difftime(ohca$discharge_dttm, ohca$admission_dttm, units = "days"))
 if (!"hospital_death" %in% names(ohca)) {
-  ohca$hospital_death <- ifelse(ohca$discharge_category == "Expired", 1L, 0L)
+  ohca$hospital_death <- ifelse(is_expired_discharge(ohca$discharge_category), 1L, 0L)
 }
 if (!"death_or_hospice" %in% names(ohca)) {
-  ohca$death_or_hospice <- ifelse(ohca$discharge_category == "Expired" | grepl("hospice", ohca$discharge_category, ignore.case = TRUE), 1L, 0L)
+  ohca$death_or_hospice <- ifelse(is_expired_discharge(ohca$discharge_category) | grepl("hospice", ohca$discharge_category, ignore.case = TRUE), 1L, 0L)
 }
 if (!"imv_any" %in% names(ohca)) ohca$imv_any <- NA_integer_
 if (!"imv_duration_hours" %in% names(ohca)) ohca$imv_duration_hours <- NA_real_
