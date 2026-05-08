@@ -56,8 +56,67 @@ normalize_county_fips <- function(x) {
   gsub(" ", "0", clean, fixed = TRUE)
 }
 
-build_formula <- function(extra_terms = character(), include_dow = TRUE, include_year = TRUE) {
-  rhs <- c("cb_temp", "ns(time_index, df = time_df)")
+finite_unique_n <- function(x) {
+  x <- suppressWarnings(as.numeric(x))
+  length(unique(x[is.finite(x)]))
+}
+
+choose_spline_term <- function(df, variable, spline_term, requested_df, linear_term = variable) {
+  n_unique <- finite_unique_n(df[[variable]])
+  if (n_unique >= requested_df + 1L) {
+    return(list(term = spline_term, note = NA_character_))
+  }
+  if (n_unique >= 2L) {
+    return(list(term = linear_term, note = paste0(variable, "_spline_reduced_to_linear")))
+  }
+  list(term = NA_character_, note = paste0(variable, "_omitted_constant_or_unavailable"))
+}
+
+sanitize_extra_terms <- function(df, extra_terms) {
+  terms <- character()
+  notes <- character()
+
+  for (term in extra_terms) {
+    if (grepl("icu_patient_address_mean_rmax_pct", term, fixed = TRUE)) {
+      selected <- choose_spline_term(
+        df,
+        "icu_patient_address_mean_rmax_pct",
+        "ns(icu_patient_address_mean_rmax_pct, df = RMAX_DF)",
+        RMAX_DF
+      )
+    } else if (grepl("icu_patient_address_mean_no2", term, fixed = TRUE)) {
+      selected <- choose_spline_term(df, "icu_patient_address_mean_no2", term, 1L)
+    } else if (grepl("icu_patient_address_mean_pm25", term, fixed = TRUE)) {
+      selected <- choose_spline_term(df, "icu_patient_address_mean_pm25", term, 1L)
+    } else {
+      selected <- list(term = term, note = NA_character_)
+    }
+
+    if (!is.na(selected$term)) terms <- c(terms, selected$term)
+    if (!is.na(selected$note)) notes <- c(notes, selected$note)
+  }
+
+  list(terms = terms, notes = unique(notes))
+}
+
+choose_time_adjustment <- function(df, requested_df) {
+  n_days <- finite_unique_n(df$time_index)
+  if (n_days < 14L) {
+    return(list(term = NA_character_, df = NA_integer_, note = "time_adjustment_omitted_too_few_days"))
+  }
+
+  capped_df <- min(as.integer(requested_df), max(1L, n_days - 2L))
+  if (capped_df >= 2L) {
+    note <- if (capped_df < requested_df) paste0("time_df_capped_from_", requested_df, "_to_", capped_df) else NA_character_
+    return(list(term = "ns(time_index, df = time_df)", df = capped_df, note = note))
+  }
+
+  list(term = "time_index", df = NA_integer_, note = "time_spline_reduced_to_linear")
+}
+
+build_formula <- function(extra_terms = character(), time_term = "ns(time_index, df = time_df)", include_dow = TRUE, include_year = TRUE) {
+  rhs <- c("cb_temp")
+  if (!is.na(time_term)) rhs <- c(rhs, time_term)
   if (include_dow) rhs <- c(rhs, "dow")
   if (include_year) rhs <- c(rhs, "factor(year)")
   rhs <- c(rhs, extra_terms)
@@ -80,12 +139,82 @@ run_dlnm_spec <- function(
   if (any(grepl("no2", extra_terms, fixed = TRUE))) needed <- c(needed, "icu_patient_address_mean_no2")
   if (any(grepl("pm25", extra_terms, fixed = TRUE))) needed <- c(needed, "icu_patient_address_mean_pm25")
   df <- df[complete.cases(df[, needed, drop = FALSE]), , drop = FALSE]
+  for (needed_col in needed) {
+    df <- df[is.finite(suppressWarnings(as.numeric(df[[needed_col]]))), , drop = FALSE]
+  }
+  if (nrow(df) <= MAX_LAG + 14L) {
+    stop(
+      "Not enough complete exposure days for DLNM model '", model, "' in stratum '", label,
+      "'. Complete days after filtering: ", nrow(df), "."
+    )
+  }
+  if (sum(df$ohca_admissions, na.rm = TRUE) == 0L) {
+    stop("No OHCA admissions available for DLNM model '", model, "' in stratum '", label, "'.")
+  }
+
   df$time_index <- seq_len(nrow(df))
-  cb_temp <- crossbasis(df$icu_patient_address_mean_tmax_c, lag = MAX_LAG, argvar = list(fun = "ns", df = VAR_DF), arglag = list(fun = "ns", df = LAG_DF))
-  formula_spec <- build_formula(extra_terms, include_dow = include_dow, include_year = include_year)
+  temp_unique <- finite_unique_n(df$icu_patient_address_mean_tmax_c)
+  if (temp_unique < 2L) {
+    stop("Temperature exposure is constant or unavailable for DLNM model '", model, "' in stratum '", label, "'.")
+  }
+  temp_var_df <- min(VAR_DF, max(2L, temp_unique - 1L))
+  if (temp_var_df < VAR_DF) {
+    message("Reducing tmax spline df from ", VAR_DF, " to ", temp_var_df, " for ", label, " / ", model, ".")
+  }
+
+  cb_temp <- crossbasis(
+    df$icu_patient_address_mean_tmax_c,
+    lag = MAX_LAG,
+    argvar = list(fun = "ns", df = temp_var_df),
+    arglag = list(fun = "ns", df = LAG_DF)
+  )
+
+  extra_info <- sanitize_extra_terms(df, extra_terms)
+  if (length(extra_info$notes) > 0L) {
+    message("Adjusted covariate terms for ", label, " / ", model, ": ", paste(extra_info$notes, collapse = "; "), ".")
+  }
+
+  requested_time_df <- length(unique(df$year)) * time_df_per_year
+  time_info <- choose_time_adjustment(df, requested_time_df)
+  if (!is.na(time_info$note)) {
+    message("Adjusted time term for ", label, " / ", model, ": ", time_info$note, ".")
+  }
+
+  model_include_dow <- include_dow && length(unique(stats::na.omit(df$dow))) > 1L
+  model_include_year <- include_year && length(unique(stats::na.omit(df$year))) > 1L
+  if (include_dow && !model_include_dow) message("Omitting day-of-week term for ", label, " / ", model, " because it has fewer than 2 levels.")
+  if (include_year && !model_include_year) message("Omitting year fixed effects for ", label, " / ", model, " because it has fewer than 2 levels.")
+
+  formula_spec <- build_formula(
+    extra_info$terms,
+    time_term = time_info$term,
+    include_dow = model_include_dow,
+    include_year = model_include_year
+  )
   environment(formula_spec) <- environment()
-  environment(formula_spec)$time_df <- length(unique(df$year)) * time_df_per_year
-  fit <- glm(formula_spec, data = df, family = quasipoisson(link = "log"))
+  environment(formula_spec)$time_df <- time_info$df
+  design <- model.matrix(formula_spec, data = df)
+  if (any(!is.finite(design))) {
+    bad_cols <- names(which(colSums(!is.finite(design)) > 0L))
+    stop(
+      "Non-finite values found in DLNM design matrix for model '", model, "' in stratum '", label,
+      "'. Columns: ", paste(bad_cols, collapse = ", "), "."
+    )
+  }
+
+  fit <- tryCatch(
+    glm(formula_spec, data = df, family = quasipoisson(link = "log")),
+    error = function(e) {
+      stop(
+        "DLNM model failed for '", model, "' in stratum '", label, "'. ",
+        "n_days=", nrow(df), ", n_ohca=", sum(df$ohca_admissions, na.rm = TRUE),
+        ", unique_tmax=", temp_unique, ", requested_time_df=", requested_time_df,
+        ", actual_time_df=", ifelse(is.na(time_info$df), "none", time_info$df),
+        ". Original error: ", conditionMessage(e),
+        call. = FALSE
+      )
+    }
+  )
   dispersion <- summary(fit)$dispersion
   grid <- make_prediction_grid(df$icu_patient_address_mean_tmax_c)
   initial_center <- median(df$icu_patient_address_mean_tmax_c, na.rm = TRUE)
@@ -112,8 +241,8 @@ run_dlnm_spec <- function(
     dispersion = dispersion,
     model_family = "quasipoisson",
     time_df_per_year = time_df_per_year,
-    includes_day_of_week = include_dow,
-    includes_year_fixed_effect = include_year,
+    includes_day_of_week = model_include_dow,
+    includes_year_fixed_effect = model_include_year,
     stringsAsFactors = FALSE
   )
 
