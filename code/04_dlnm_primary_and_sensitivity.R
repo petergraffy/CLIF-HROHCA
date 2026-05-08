@@ -40,6 +40,10 @@ TIME_DF_PER_YEAR <- 4L
 VAR_DF <- 4L
 LAG_DF <- 3L
 RMAX_DF <- 3L
+MIN_STRATUM_OHCA <- 30L
+MIN_STRATUM_EVENT_DAYS <- 10L
+MIN_FALLBACK_OHCA <- 10L
+FALLBACK_TIME_DF_PER_YEAR <- 1L
 
 safe_quantile <- function(x, prob) stats::quantile(x, probs = prob, na.rm = TRUE, names = FALSE, type = 7)
 
@@ -123,6 +127,118 @@ build_formula <- function(extra_terms = character(), time_term = "ns(time_index,
   as.formula(paste("ohca_admissions ~", paste(rhs, collapse = " + ")))
 }
 
+make_nonestimable_dlnm_result <- function(df, label, model, reference, time_df_per_year, include_dow, include_year, reason) {
+  n_days <- nrow(df)
+  n_ohca <- if ("ohca_admissions" %in% names(df)) sum(df$ohca_admissions, na.rm = TRUE) else 0L
+  data.frame(
+    stratum = label,
+    model = model,
+    n_days = n_days,
+    n_ohca = n_ohca,
+    reference_type = reference,
+    reference_temp_c = NA_real_,
+    hot_temp_c = NA_real_,
+    cumulative_rr = NA_real_,
+    cumulative_rr_low = NA_real_,
+    cumulative_rr_high = NA_real_,
+    log_rr = NA_real_,
+    log_rr_se = NA_real_,
+    aic = NA_real_,
+    dispersion = NA_real_,
+    model_family = "quasipoisson",
+    time_df_per_year = time_df_per_year,
+    includes_day_of_week = include_dow,
+    includes_year_fixed_effect = include_year,
+    estimable = FALSE,
+    converged = FALSE,
+    model_type = "not_estimable",
+    fallback_reason = NA_character_,
+    skip_reason = reason,
+    stringsAsFactors = FALSE
+  )
+}
+
+run_linear_fallback_spec <- function(
+  df,
+  label,
+  model,
+  reference,
+  time_df_per_year,
+  include_dow,
+  reason
+) {
+  if (sum(df$ohca_admissions, na.rm = TRUE) < MIN_FALLBACK_OHCA) {
+    return(make_nonestimable_dlnm_result(
+      df, label, model, reference, time_df_per_year, include_dow, FALSE,
+      paste0(reason, "; linear fallback not fit because fewer than ", MIN_FALLBACK_OHCA, " OHCA admissions")
+    ))
+  }
+
+  fallback_model <- paste0(model, "_linear_fallback")
+  df$time_index <- seq_len(nrow(df))
+  df$tmax_per_5c <- df$icu_patient_address_mean_tmax_c / 5
+  fallback_time_df <- max(1L, length(unique(df$year)) * FALLBACK_TIME_DF_PER_YEAR)
+  formula_spec <- as.formula(
+    "ohca_admissions ~ tmax_per_5c + ns(time_index, df = fallback_time_df) + dow + ns(icu_patient_address_mean_rmax_pct, df = RMAX_DF)"
+  )
+  environment(formula_spec) <- environment()
+
+  fit <- tryCatch(
+    glm(formula_spec, data = df, family = quasipoisson(link = "log")),
+    error = function(e) e
+  )
+  if (inherits(fit, "error")) {
+    return(make_nonestimable_dlnm_result(
+      df, label, fallback_model, reference, FALLBACK_TIME_DF_PER_YEAR, include_dow, FALSE,
+      paste0(reason, "; linear fallback failed: ", conditionMessage(fit))
+    ))
+  }
+
+  beta <- unname(coef(fit)[["tmax_per_5c"]])
+  beta_var <- vcov(fit)["tmax_per_5c", "tmax_per_5c"]
+  beta_se <- sqrt(beta_var)
+  stable <- isTRUE(fit$converged) && is.finite(beta) && is.finite(beta_se) && abs(beta) < 20 && beta_se < 10
+  if (!stable) {
+    return(make_nonestimable_dlnm_result(
+      df, label, fallback_model, reference, FALLBACK_TIME_DF_PER_YEAR, include_dow, FALSE,
+      paste0(reason, "; linear fallback did not converge or produced an unstable coefficient")
+    ))
+  }
+
+  center <- median(df$icu_patient_address_mean_tmax_c, na.rm = TRUE)
+  hot_temp <- safe_quantile(df$icu_patient_address_mean_tmax_c, 0.95)
+  contrast <- (hot_temp - center) / 5
+  log_rr <- beta * contrast
+  log_rr_se <- sqrt(beta_var) * abs(contrast)
+
+  data.frame(
+    stratum = label,
+    model = fallback_model,
+    n_days = nrow(df),
+    n_ohca = sum(df$ohca_admissions, na.rm = TRUE),
+    reference_type = reference,
+    reference_temp_c = center,
+    hot_temp_c = hot_temp,
+    cumulative_rr = exp(log_rr),
+    cumulative_rr_low = exp(log_rr - 1.96 * log_rr_se),
+    cumulative_rr_high = exp(log_rr + 1.96 * log_rr_se),
+    log_rr = log_rr,
+    log_rr_se = log_rr_se,
+    aic = NA_real_,
+    dispersion = summary(fit)$dispersion,
+    model_family = "quasipoisson",
+    time_df_per_year = FALLBACK_TIME_DF_PER_YEAR,
+    includes_day_of_week = include_dow,
+    includes_year_fixed_effect = FALSE,
+    estimable = TRUE,
+    converged = fit$converged,
+    model_type = "linear_fallback",
+    fallback_reason = reason,
+    skip_reason = NA_character_,
+    stringsAsFactors = FALSE
+  )
+}
+
 run_dlnm_spec <- function(
   df,
   label,
@@ -132,7 +248,11 @@ run_dlnm_spec <- function(
   time_df_per_year = TIME_DF_PER_YEAR,
   include_dow = TRUE,
   include_year = TRUE,
-  return_curve = FALSE
+  return_curve = FALSE,
+  allow_skip = FALSE,
+  min_ohca = 0L,
+  min_event_days = 0L,
+  fallback_linear = FALSE
 ) {
   reference <- match.arg(reference)
   needed <- c("icu_patient_address_mean_tmax_c", "icu_patient_address_mean_rmax_pct")
@@ -142,32 +262,68 @@ run_dlnm_spec <- function(
   for (needed_col in needed) {
     df <- df[is.finite(suppressWarnings(as.numeric(df[[needed_col]]))), , drop = FALSE]
   }
+
+  n_ohca <- sum(df$ohca_admissions, na.rm = TRUE)
+  n_event_days <- sum(df$ohca_admissions > 0, na.rm = TRUE)
+  skip_reason <- NULL
   if (nrow(df) <= MAX_LAG + 14L) {
-    stop(
-      "Not enough complete exposure days for DLNM model '", model, "' in stratum '", label,
-      "'. Complete days after filtering: ", nrow(df), "."
-    )
+    skip_reason <- paste0("Only ", nrow(df), " complete exposure days after filtering")
+  } else if (n_ohca == 0L) {
+    skip_reason <- "No OHCA admissions available"
+  } else if (n_ohca < min_ohca) {
+    skip_reason <- paste0("Only ", n_ohca, " OHCA admissions; minimum for this model is ", min_ohca)
+  } else if (n_event_days < min_event_days) {
+    skip_reason <- paste0("Only ", n_event_days, " event days; minimum for this model is ", min_event_days)
+  } else if (finite_unique_n(df$icu_patient_address_mean_tmax_c) < 2L) {
+    skip_reason <- "Temperature exposure is constant or unavailable"
   }
-  if (sum(df$ohca_admissions, na.rm = TRUE) == 0L) {
-    stop("No OHCA admissions available for DLNM model '", model, "' in stratum '", label, "'.")
+  if (!is.null(skip_reason)) {
+    if (!allow_skip) stop(skip_reason, call. = FALSE)
+    if (fallback_linear) {
+      message("Falling back to linear model for DLNM model '", model, "' in stratum '", label, "': ", skip_reason)
+      fallback <- run_linear_fallback_spec(df, label, model, reference, time_df_per_year, include_dow, skip_reason)
+      if (return_curve) return(list(result = fallback, curve = NULL, reduced_coef = NULL, reduced_vcov = NULL))
+      return(fallback)
+    } else {
+      message("Skipping DLNM model '", model, "' in stratum '", label, "': ", skip_reason)
+      skipped <- make_nonestimable_dlnm_result(df, label, model, reference, time_df_per_year, include_dow, include_year, skip_reason)
+      if (return_curve) return(list(result = skipped, curve = NULL, reduced_coef = NULL, reduced_vcov = NULL))
+      return(skipped)
+    }
   }
 
   df$time_index <- seq_len(nrow(df))
   temp_unique <- finite_unique_n(df$icu_patient_address_mean_tmax_c)
-  if (temp_unique < 2L) {
-    stop("Temperature exposure is constant or unavailable for DLNM model '", model, "' in stratum '", label, "'.")
-  }
   temp_var_df <- min(VAR_DF, max(2L, temp_unique - 1L))
   if (temp_var_df < VAR_DF) {
     message("Reducing tmax spline df from ", VAR_DF, " to ", temp_var_df, " for ", label, " / ", model, ".")
   }
 
-  cb_temp <- crossbasis(
-    df$icu_patient_address_mean_tmax_c,
-    lag = MAX_LAG,
-    argvar = list(fun = "ns", df = temp_var_df),
-    arglag = list(fun = "ns", df = LAG_DF)
+  cb_temp <- tryCatch(
+    crossbasis(
+      df$icu_patient_address_mean_tmax_c,
+      lag = MAX_LAG,
+      argvar = list(fun = "ns", df = temp_var_df),
+      arglag = list(fun = "ns", df = LAG_DF)
+    ),
+    error = function(e) {
+      if (!allow_skip) stop(e)
+      e
+    }
   )
+  if (inherits(cb_temp, "error")) {
+    reason <- paste0("DLNM crossbasis failed: ", conditionMessage(cb_temp))
+    if (fallback_linear) {
+      message("Falling back to linear model for DLNM model '", model, "' in stratum '", label, "': ", reason)
+      fallback <- run_linear_fallback_spec(df, label, model, reference, time_df_per_year, include_dow, reason)
+      if (return_curve) return(list(result = fallback, curve = NULL, reduced_coef = NULL, reduced_vcov = NULL))
+      return(fallback)
+    }
+    skipped <- make_nonestimable_dlnm_result(df, label, model, reference, time_df_per_year, include_dow, include_year, reason)
+    message("Skipping DLNM model '", model, "' in stratum '", label, "': ", skipped$skip_reason)
+    if (return_curve) return(list(result = skipped, curve = NULL, reduced_coef = NULL, reduced_vcov = NULL))
+    return(skipped)
+  }
 
   extra_info <- sanitize_extra_terms(df, extra_terms)
   if (length(extra_info$notes) > 0L) {
@@ -196,32 +352,71 @@ run_dlnm_spec <- function(
   design <- model.matrix(formula_spec, data = df)
   if (any(!is.finite(design))) {
     bad_cols <- names(which(colSums(!is.finite(design)) > 0L))
-    stop(
-      "Non-finite values found in DLNM design matrix for model '", model, "' in stratum '", label,
-      "'. Columns: ", paste(bad_cols, collapse = ", "), "."
-    )
+    reason <- paste0("Non-finite values found in DLNM design matrix. Columns: ", paste(bad_cols, collapse = ", "))
+    if (!allow_skip) stop(reason, call. = FALSE)
+    if (fallback_linear) {
+      message("Falling back to linear model for DLNM model '", model, "' in stratum '", label, "': ", reason)
+      fallback <- run_linear_fallback_spec(df, label, model, reference, time_df_per_year, include_dow, reason)
+      if (return_curve) return(list(result = fallback, curve = NULL, reduced_coef = NULL, reduced_vcov = NULL))
+      return(fallback)
+    }
+    skipped <- make_nonestimable_dlnm_result(df, label, model, reference, time_df_per_year, include_dow, include_year, reason)
+    message("Skipping DLNM model '", model, "' in stratum '", label, "': ", skipped$skip_reason)
+    if (return_curve) return(list(result = skipped, curve = NULL, reduced_coef = NULL, reduced_vcov = NULL))
+    return(skipped)
   }
 
   fit <- tryCatch(
     glm(formula_spec, data = df, family = quasipoisson(link = "log")),
     error = function(e) {
-      stop(
-        "DLNM model failed for '", model, "' in stratum '", label, "'. ",
-        "n_days=", nrow(df), ", n_ohca=", sum(df$ohca_admissions, na.rm = TRUE),
-        ", unique_tmax=", temp_unique, ", requested_time_df=", requested_time_df,
-        ", actual_time_df=", ifelse(is.na(time_info$df), "none", time_info$df),
-        ". Original error: ", conditionMessage(e),
-        call. = FALSE
-      )
+      if (!allow_skip) stop(e)
+      e
     }
   )
+  if (inherits(fit, "error")) {
+    reason <- paste0("DLNM fit failed: ", conditionMessage(fit))
+    if (fallback_linear) {
+      message("Falling back to linear model for DLNM model '", model, "' in stratum '", label, "': ", reason)
+      fallback <- run_linear_fallback_spec(df, label, model, reference, time_df_per_year, include_dow, reason)
+      if (return_curve) return(list(result = fallback, curve = NULL, reduced_coef = NULL, reduced_vcov = NULL))
+      return(fallback)
+    }
+    skipped <- make_nonestimable_dlnm_result(df, label, model, reference, time_df_per_year, include_dow, include_year, reason)
+    message("Skipping DLNM model '", model, "' in stratum '", label, "': ", skipped$skip_reason)
+    if (return_curve) return(list(result = skipped, curve = NULL, reduced_coef = NULL, reduced_vcov = NULL))
+    return(skipped)
+  }
   dispersion <- summary(fit)$dispersion
   grid <- make_prediction_grid(df$icu_patient_address_mean_tmax_c)
   initial_center <- median(df$icu_patient_address_mean_tmax_c, na.rm = TRUE)
-  pred_initial <- crosspred(cb_temp, fit, cen = initial_center, at = grid)
-  center <- if (reference == "median") initial_center else grid[which.min(pred_initial$allRRfit)]
-  pred <- crosspred(cb_temp, fit, cen = center, at = grid)
-  reduced <- crossreduce(cb_temp, fit, cen = center)
+  prediction_objects <- tryCatch({
+    pred_initial <- crosspred(cb_temp, fit, cen = initial_center, at = grid)
+    center <- if (reference == "median") initial_center else grid[which.min(pred_initial$allRRfit)]
+    list(
+      center = center,
+      pred = crosspred(cb_temp, fit, cen = center, at = grid),
+      reduced = crossreduce(cb_temp, fit, cen = center)
+    )
+  }, error = function(e) {
+    if (!allow_skip) stop(e)
+    e
+  })
+  if (inherits(prediction_objects, "error")) {
+    reason <- paste0("DLNM prediction failed: ", conditionMessage(prediction_objects))
+    if (fallback_linear) {
+      message("Falling back to linear model for DLNM model '", model, "' in stratum '", label, "': ", reason)
+      fallback <- run_linear_fallback_spec(df, label, model, reference, time_df_per_year, include_dow, reason)
+      if (return_curve) return(list(result = fallback, curve = NULL, reduced_coef = NULL, reduced_vcov = NULL))
+      return(fallback)
+    }
+    skipped <- make_nonestimable_dlnm_result(df, label, model, reference, time_df_per_year, include_dow, include_year, reason)
+    message("Skipping DLNM model '", model, "' in stratum '", label, "': ", skipped$skip_reason)
+    if (return_curve) return(list(result = skipped, curve = NULL, reduced_coef = NULL, reduced_vcov = NULL))
+    return(skipped)
+  }
+  center <- prediction_objects$center
+  pred <- prediction_objects$pred
+  reduced <- prediction_objects$reduced
   hot_temp <- grid[which.min(abs(grid - safe_quantile(df$icu_patient_address_mean_tmax_c, 0.95)))]
   hot_index <- which.min(abs(grid - hot_temp))
   result <- data.frame(
@@ -243,6 +438,11 @@ run_dlnm_spec <- function(
     time_df_per_year = time_df_per_year,
     includes_day_of_week = model_include_dow,
     includes_year_fixed_effect = model_include_year,
+    estimable = TRUE,
+    converged = fit$converged,
+    model_type = "dlnm",
+    fallback_reason = NA_character_,
+    skip_reason = NA_character_,
     stringsAsFactors = FALSE
   )
 
@@ -388,12 +588,16 @@ for (nm in c("male","female","age_lt65","age_ge65","race_black","race_nonblack")
     label,
     model = "stratified_humidity_adjusted",
     reference = "median",
-    return_curve = TRUE
+    return_curve = TRUE,
+    allow_skip = TRUE,
+    min_ohca = MIN_STRATUM_OHCA,
+    min_event_days = MIN_STRATUM_EVENT_DAYS,
+    fallback_linear = TRUE
   )
   results[[paste0(nm, "_primary")]] <- stratified$result
-  curve_rows[[paste0(nm, "_primary")]] <- stratified$curve
-  reduced_coef_rows[[paste0(nm, "_primary")]] <- stratified$reduced_coef
-  reduced_vcov_rows[[paste0(nm, "_primary")]] <- stratified$reduced_vcov
+  if (!is.null(stratified$curve)) curve_rows[[paste0(nm, "_primary")]] <- stratified$curve
+  if (!is.null(stratified$reduced_coef)) reduced_coef_rows[[paste0(nm, "_primary")]] <- stratified$reduced_coef
+  if (!is.null(stratified$reduced_vcov)) reduced_vcov_rows[[paste0(nm, "_primary")]] <- stratified$reduced_vcov
 }
 
 results_df <- do.call(rbind, results)

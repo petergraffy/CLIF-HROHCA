@@ -27,7 +27,7 @@ pool_der_simonian_laird <- function(est, se) {
   est <- est[keep]
   se <- se[keep]
   k <- length(est)
-  if (k == 0) stop("No valid site estimates to pool.")
+  if (k == 0) return(NULL)
   vi <- pmax(se^2, .Machine$double.eps)
   wi <- 1 / vi
   fixed <- sum(wi * est) / sum(wi)
@@ -57,19 +57,25 @@ if (length(files) == 0) {
 }
 
 site_results <- do.call(rbind, lapply(files, read.csv, stringsAsFactors = FALSE))
+if ("estimable" %in% names(site_results)) {
+  site_results_for_pooling <- site_results[site_results$estimable %in% c(TRUE, "TRUE", NA), , drop = FALSE]
+} else {
+  site_results_for_pooling <- site_results
+}
 
 pooled_rows <- list()
-groups <- unique(site_results[, c("stratum", "model", "reference_type")])
+groups <- unique(site_results_for_pooling[, c("stratum", "model", "reference_type")])
 for (i in seq_len(nrow(groups))) {
   g <- groups[i, , drop = FALSE]
-  dat <- site_results[
-    site_results$stratum == g$stratum &
-      site_results$model == g$model &
-      site_results$reference_type == g$reference_type,
+  dat <- site_results_for_pooling[
+    site_results_for_pooling$stratum == g$stratum &
+      site_results_for_pooling$model == g$model &
+      site_results_for_pooling$reference_type == g$reference_type,
     ,
     drop = FALSE
   ]
   pooled <- pool_der_simonian_laird(dat$log_rr, dat$log_rr_se)
+  if (is.null(pooled)) next
   pooled$stratum <- g$stratum
   pooled$model <- g$model
   pooled$reference_type <- g$reference_type
@@ -77,7 +83,11 @@ for (i in seq_len(nrow(groups))) {
 }
 
 pooled_results <- do.call(rbind, pooled_rows)
-pooled_results <- pooled_results[, c("stratum", "model", "reference_type", setdiff(names(pooled_results), c("stratum", "model", "reference_type")))]
+if (is.null(pooled_results)) {
+  pooled_results <- data.frame()
+} else {
+  pooled_results <- pooled_results[, c("stratum", "model", "reference_type", setdiff(names(pooled_results), c("stratum", "model", "reference_type")))]
+}
 
 write.csv(site_results, file.path(output_dir, "all_site_dlnm_estimates.csv"), row.names = FALSE)
 write.csv(pooled_results, file.path(output_dir, "pooled_dlnm_random_effects_results.csv"), row.names = FALSE)
@@ -104,6 +114,7 @@ if (length(curve_files) > 0) {
       drop = FALSE
     ]
     pooled <- pool_der_simonian_laird(dat$log_rr, dat$log_rr_se)
+    if (is.null(pooled)) next
     pooled$stratum <- g$stratum
     pooled$model <- g$model
     pooled$reference_type <- g$reference_type
@@ -112,8 +123,12 @@ if (length(curve_files) > 0) {
   }
 
   pooled_curves <- do.call(rbind, curve_rows)
-  pooled_curves <- pooled_curves[order(pooled_curves$stratum, pooled_curves$model, pooled_curves$reference_type, pooled_curves$tmax_mean_c), ]
-  pooled_curves <- pooled_curves[, c("stratum", "model", "reference_type", "tmax_mean_c", setdiff(names(pooled_curves), c("stratum", "model", "reference_type", "tmax_mean_c")))]
+  if (is.null(pooled_curves)) {
+    pooled_curves <- data.frame()
+  } else {
+    pooled_curves <- pooled_curves[order(pooled_curves$stratum, pooled_curves$model, pooled_curves$reference_type, pooled_curves$tmax_mean_c), ]
+    pooled_curves <- pooled_curves[, c("stratum", "model", "reference_type", "tmax_mean_c", setdiff(names(pooled_curves), c("stratum", "model", "reference_type", "tmax_mean_c")))]
+  }
 
   write.csv(site_curves, file.path(output_dir, "all_site_dlnm_curves.csv"), row.names = FALSE)
   write.csv(pooled_curves, file.path(output_dir, "pooled_dlnm_random_effects_curves.csv"), row.names = FALSE)

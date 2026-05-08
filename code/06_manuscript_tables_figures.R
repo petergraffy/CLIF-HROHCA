@@ -52,7 +52,9 @@ pollution_binary_models_path <- file.path(outcomes_dir, "ohca_pollution_12m_bina
 pollution_continuous_models_path <- file.path(outcomes_dir, "ohca_pollution_12m_continuous_outcome_models.csv")
 
 fmt_rr <- function(rr, low, high) {
-  sprintf("%.2f (%.2f, %.2f)", rr, low, high)
+  out <- sprintf("%.2f (%.2f, %.2f)", rr, low, high)
+  out[!is.finite(rr) | !is.finite(low) | !is.finite(high)] <- "Not estimable"
+  out
 }
 
 final_dlnm_table <- results
@@ -63,7 +65,8 @@ final_dlnm_table$rr_95_ci <- fmt_rr(
 )
 final_dlnm_table <- final_dlnm_table[, c(
   "stratum", "model", "n_ohca", "reference_type", "reference_temp_c",
-  "hot_temp_c", "rr_95_ci", "log_rr", "log_rr_se"
+  "hot_temp_c", "rr_95_ci", "log_rr", "log_rr_se",
+  intersect(c("estimable", "converged", "model_type", "fallback_reason", "skip_reason"), names(final_dlnm_table))
 )]
 
 write.csv(final_dlnm_table, file.path(manuscript_dir, "table2_manuscript_dlnm_results_formatted.csv"), row.names = FALSE)
@@ -124,7 +127,14 @@ p_curve <- ggplot(primary_curve, aes(x = tmax_mean_c, y = cumulative_rr)) +
 
 ggsave(file.path(figure_dir, "figure_primary_dlnm_curve.png"), p_curve, width = 8, height = 5.5, dpi = 300)
 
-forest_df <- results[results$model %in% c("primary_humidity_adjusted", "stratified_humidity_adjusted"), , drop = FALSE]
+forest_df <- results[results$model %in% c(
+  "primary_humidity_adjusted",
+  "stratified_humidity_adjusted",
+  "stratified_humidity_adjusted_linear_fallback"
+), , drop = FALSE]
+if ("estimable" %in% names(forest_df)) {
+  forest_df <- forest_df[forest_df$estimable %in% c(TRUE, "TRUE"), , drop = FALSE]
+}
 forest_df$stratum <- factor(
   forest_df$stratum,
   levels = rev(c("Overall", "Male", "Female", "<65", ">=65", "Black", "Non-Black"))
@@ -141,8 +151,8 @@ p_forest <- ggplot(forest_df, aes(y = stratum, x = cumulative_rr)) +
   geom_point(size = 2.4, color = "#3D405B") +
   scale_x_log10() +
   labs(
-    title = "Stratified DLNM Heat Associations",
-    subtitle = "RR for 95th percentile Tmax versus median Tmax",
+    title = "Stratified Heat Associations",
+    subtitle = "RR for 95th percentile Tmax versus median Tmax; sparse strata use the labeled linear fallback",
     x = "Cumulative relative risk, log scale",
     y = NULL
   ) +
