@@ -598,6 +598,22 @@ for (nm in c("male","female","age_lt65","age_ge65","race_black","race_nonblack")
   if (!is.null(stratified$curve)) curve_rows[[paste0(nm, "_primary")]] <- stratified$curve
   if (!is.null(stratified$reduced_coef)) reduced_coef_rows[[paste0(nm, "_primary")]] <- stratified$reduced_coef
   if (!is.null(stratified$reduced_vcov)) reduced_vcov_rows[[paste0(nm, "_primary")]] <- stratified$reduced_vcov
+
+  stratified_mrt <- run_dlnm_spec(
+    merged,
+    label,
+    model = "stratified_mrt_reference",
+    reference = "mrt",
+    return_curve = TRUE,
+    allow_skip = TRUE,
+    min_ohca = MIN_STRATUM_OHCA,
+    min_event_days = MIN_STRATUM_EVENT_DAYS,
+    fallback_linear = TRUE
+  )
+  results[[paste0(nm, "_mrt")]] <- stratified_mrt$result
+  if (!is.null(stratified_mrt$curve)) curve_rows[[paste0(nm, "_mrt")]] <- stratified_mrt$curve
+  if (!is.null(stratified_mrt$reduced_coef)) reduced_coef_rows[[paste0(nm, "_mrt")]] <- stratified_mrt$reduced_coef
+  if (!is.null(stratified_mrt$reduced_vcov)) reduced_vcov_rows[[paste0(nm, "_mrt")]] <- stratified_mrt$reduced_vcov
 }
 
 results_df <- do.call(rbind, results)
