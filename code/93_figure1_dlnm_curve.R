@@ -14,6 +14,7 @@ get_script_path <- function() {
 }
 
 repo_root <- normalizePath(file.path(dirname(get_script_path()), ".."), winslash = "/", mustWork = TRUE)
+box_root <- "/Users/saborpete/Library/CloudStorage/Box-Box/CLIF/Projects/CLIF-Heat-Related-OHCA"
 input_path <- file.path(repo_root, "output", "final", "federated_pooled", "pooled_dlnm_random_effects_curves.csv")
 output_dir <- file.path(repo_root, "output", "final", "manuscript_figures")
 dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
@@ -27,47 +28,84 @@ suppressPackageStartupMessages({
   library(svglite)
 })
 
-curve <- read.csv(input_path, stringsAsFactors = FALSE) |>
+curve_all <- read.csv(input_path, stringsAsFactors = FALSE) |>
   filter(
     .data$stratum == "Overall",
     .data$model == "sensitivity_mrt_reference",
-    .data$reference_type == "mrt",
-    .data$k_sites == 8
+    .data$reference_type == "mrt"
   ) |>
   mutate(
     tmax_mean_c = as.numeric(.data$tmax_mean_c),
     cumulative_rr = as.numeric(.data$cumulative_rr),
     cumulative_rr_low = as.numeric(.data$cumulative_rr_low),
     cumulative_rr_high = as.numeric(.data$cumulative_rr_high)
-  ) |>
-  arrange(.data$tmax_mean_c)
-
-label_points <- curve |>
-  filter(.data$tmax_mean_c %in% c(30, 32.5, 35)) |>
-  mutate(
-    label = dplyr::case_when(
-      .data$tmax_mean_c == 30 ~ "MRT reference\nRR 1.01",
-      .data$tmax_mean_c == 32.5 ~ "32.5 C: RR 1.34\n95% CI 1.06-1.70",
-      .data$tmax_mean_c == 35 ~ "35.0 C: RR 1.98\n95% CI 1.43-2.73",
-      TRUE ~ ""
-    )
   )
 
-caption_text <- paste(
-  "Pooled random-effects distributed lag nonlinear model (DLNM).",
-  "\nCurve is restricted to the Tmax range where all 8 sites contributed estimates.",
-  "\nRibbon shows 95% CI; RR is referenced to site-specific minimum-risk temperature (MRT)."
+max_k_sites <- max(curve_all$k_sites, na.rm = TRUE)
+
+curve <- curve_all |>
+  filter(.data$k_sites == max_k_sites) |>
+  arrange(.data$tmax_mean_c)
+
+y_upper <- max(3.75, max(curve$cumulative_rr_high, na.rm = TRUE) * 1.05)
+
+threshold_files <- list.files(
+  box_root,
+  pattern = "^[^_]+_heat_related_ohca_thresholds[.]csv$",
+  recursive = TRUE,
+  full.names = TRUE
 )
+threshold_files <- threshold_files[grepl("/federated_exports/", threshold_files)]
+thresholds <- bind_rows(lapply(threshold_files, read.csv, stringsAsFactors = FALSE, check.names = FALSE)) |>
+  filter(.data$heat_definition %in% c("heat90", "heat95")) |>
+  mutate(heat_threshold_tmax_c = as.numeric(.data$heat_threshold_tmax_c))
+
+heat90_threshold <- thresholds |>
+  filter(.data$heat_definition == "heat90") |>
+  summarise(threshold = median(.data$heat_threshold_tmax_c, na.rm = TRUE)) |>
+  pull(.data$threshold)
+
+heat95_threshold <- thresholds |>
+  filter(.data$heat_definition == "heat95") |>
+  summarise(threshold = median(.data$heat_threshold_tmax_c, na.rm = TRUE)) |>
+  pull(.data$threshold)
+
+label_targets <- c(30, heat90_threshold, heat95_threshold)
+label_points <- do.call(rbind, lapply(label_targets, function(target) {
+  curve[which.min(abs(curve$tmax_mean_c - target)), , drop = FALSE]
+})) |>
+  mutate(
+    label_type = c("MRT reference", "90th percentile", "95th percentile"),
+    label_x = c(27.1, 31.1, 35.3),
+    label_y = c(0.78, 1.78, 2.22),
+    label = sprintf(
+      "%s\n%.1f \u00b0C: RR %.2f\n95%% CI %.2f-%.2f",
+      .data$label_type,
+      .data$tmax_mean_c,
+      .data$cumulative_rr,
+      .data$cumulative_rr_low,
+      .data$cumulative_rr_high
+    )
+  )
 
 figure1 <- ggplot(curve, aes(x = .data$tmax_mean_c, y = .data$cumulative_rr)) +
   annotate(
     "rect",
-    xmin = 32.5,
-    xmax = max(curve$tmax_mean_c),
+    xmin = heat90_threshold,
+    xmax = heat95_threshold,
     ymin = -Inf,
     ymax = Inf,
     fill = "#F6D7B0",
-    alpha = 0.22
+    alpha = 0.20
+  ) +
+  annotate(
+    "rect",
+    xmin = heat95_threshold,
+    xmax = max(curve$tmax_mean_c),
+    ymin = -Inf,
+    ymax = Inf,
+    fill = "#F1B56A",
+    alpha = 0.18
   ) +
   geom_hline(yintercept = 1, linewidth = 0.45, linetype = "dashed", color = "#5F6368") +
   geom_vline(xintercept = 30, linewidth = 0.45, linetype = "dotted", color = "#5F6368") +
@@ -78,22 +116,30 @@ figure1 <- ggplot(curve, aes(x = .data$tmax_mean_c, y = .data$cumulative_rr)) +
     linewidth = 0
   ) +
   geom_line(linewidth = 1.35, color = "#0B3C5D", lineend = "round") +
-  geom_point(data = label_points, size = 2.3, color = "#0B3C5D", fill = "white", shape = 21, stroke = 0.8) +
-  ggrepel::geom_label_repel(
+  geom_segment(
     data = label_points,
-    aes(label = .data$label),
+    aes(
+      x = .data$label_x,
+      y = .data$label_y,
+      xend = .data$tmax_mean_c,
+      yend = .data$cumulative_rr
+    ),
+    inherit.aes = FALSE,
+    color = "#6B7280",
+    linewidth = 0.28
+  ) +
+  geom_point(data = label_points, size = 2.3, color = "#0B3C5D", fill = "white", shape = 21, stroke = 0.8) +
+  geom_label(
+    data = label_points,
+    aes(x = .data$label_x, y = .data$label_y, label = .data$label),
+    inherit.aes = FALSE,
     size = 2.75,
     family = "Helvetica",
     color = "#1F2933",
     fill = "white",
-    label.size = 0.18,
+    linewidth = 0.18,
     label.padding = unit(0.13, "lines"),
-    box.padding = 0.45,
-    point.padding = 0.25,
-    min.segment.length = 0,
-    segment.color = "#6B7280",
-    segment.size = 0.35,
-    seed = 20260513
+    lineheight = 1.05
   ) +
   scale_x_continuous(
     breaks = seq(18, 37, by = 2),
@@ -101,27 +147,26 @@ figure1 <- ggplot(curve, aes(x = .data$tmax_mean_c, y = .data$cumulative_rr)) +
     expand = expansion(mult = c(0.015, 0.035))
   ) +
   scale_y_continuous(
-    breaks = c(0.75, 1, 1.25, 1.5, 2, 2.5, 3, 3.5),
+    breaks = c(0.75, 1, 1.25, 1.5, 2, 2.5, 3, 3.5, 4),
     labels = label_number(accuracy = 0.01),
-    limits = c(0.72, 3.75),
+    limits = c(0.55, y_upper),
     expand = expansion(mult = c(0, 0.03))
   ) +
   labs(
-    title = "Higher daily maximum temperature was associated with increased OHCA risk",
-    subtitle = "Pooled MRT-referenced DLNM across 8 CLIF sites, 2018-2024",
-    x = "County-level daily maximum temperature, Tmax (C)",
-    y = "Cumulative relative risk of OHCA",
-    caption = caption_text
+    title = "Cumulative relative risk of OHCA ICU admission per daily maximum temperature",
+    x = "County-level daily maximum temperature, Tmax (\u00b0C)",
+    y = "Cumulative relative risk of OHCA"
   ) +
-  theme_minimal(base_family = "Helvetica", base_size = 10.5) +
+  theme_classic(base_family = "Helvetica", base_size = 10.5) +
   theme(
     plot.title = element_text(face = "bold", size = 12.5, color = "#111827", margin = margin(b = 4)),
-    plot.subtitle = element_text(size = 9.8, color = "#374151", margin = margin(b = 10)),
-    plot.caption = element_text(size = 7.5, color = "#4B5563", hjust = 0, lineheight = 1.15, margin = margin(t = 8)),
     axis.title = element_text(face = "bold", size = 9.8, color = "#111827"),
-    axis.text = element_text(size = 8.8, color = "#374151"),
-    panel.grid.major = element_line(color = "#E5E7EB", linewidth = 0.35),
-    panel.grid.minor = element_line(color = "#F3F4F6", linewidth = 0.25),
+    axis.text = element_text(size = 8.8, color = "black"),
+    axis.line = element_line(color = "black", linewidth = 0.45),
+    axis.ticks = element_line(color = "black", linewidth = 0.45),
+    axis.ticks.length = unit(0.12, "cm"),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
     plot.background = element_rect(fill = "white", color = NA),
     panel.background = element_rect(fill = "white", color = NA),
     plot.margin = margin(10, 12, 10, 10)
