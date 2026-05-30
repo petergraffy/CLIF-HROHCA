@@ -134,4 +134,92 @@ if (length(curve_files) > 0) {
   write.csv(pooled_curves, file.path(output_dir, "pooled_dlnm_random_effects_curves.csv"), row.names = FALSE)
 }
 
+lag_files <- list.files(input_dir, pattern = "_dlnm_lag_summaries\\.csv$", full.names = TRUE)
+if (length(lag_files) > 0) {
+  site_lags <- do.call(rbind, lapply(lag_files, read.csv, stringsAsFactors = FALSE))
+
+  if (!all(c("log_rr", "log_rr_se") %in% names(site_lags))) {
+    site_lags$log_rr <- log(site_lags$cumulative_rr)
+    site_lags$log_rr_se <- (log(site_lags$cumulative_rr_high) - log(site_lags$cumulative_rr_low)) / (2 * 1.96)
+  }
+
+  lag_groups <- unique(site_lags[, c("stratum", "model", "reference_type", "lag_start", "lag_end", "lag_label")])
+  lag_rows <- list()
+  for (i in seq_len(nrow(lag_groups))) {
+    g <- lag_groups[i, , drop = FALSE]
+    dat <- site_lags[
+      site_lags$stratum == g$stratum &
+        site_lags$model == g$model &
+        site_lags$reference_type == g$reference_type &
+        site_lags$lag_start == g$lag_start &
+        site_lags$lag_end == g$lag_end,
+      ,
+      drop = FALSE
+    ]
+    pooled <- pool_der_simonian_laird(dat$log_rr, dat$log_rr_se)
+    if (is.null(pooled)) next
+    pooled$stratum <- g$stratum
+    pooled$model <- g$model
+    pooled$reference_type <- g$reference_type
+    pooled$lag_start <- g$lag_start
+    pooled$lag_end <- g$lag_end
+    pooled$lag_label <- g$lag_label
+    lag_rows[[i]] <- pooled
+  }
+
+  pooled_lags <- do.call(rbind, lag_rows)
+  if (is.null(pooled_lags)) {
+    pooled_lags <- data.frame()
+  } else {
+    pooled_lags <- pooled_lags[order(pooled_lags$stratum, pooled_lags$model, pooled_lags$reference_type, pooled_lags$lag_end), ]
+    pooled_lags <- pooled_lags[, c("stratum", "model", "reference_type", "lag_start", "lag_end", "lag_label", setdiff(names(pooled_lags), c("stratum", "model", "reference_type", "lag_start", "lag_end", "lag_label")))]
+  }
+
+  write.csv(site_lags, file.path(output_dir, "all_site_dlnm_lag_summaries.csv"), row.names = FALSE)
+  write.csv(pooled_lags, file.path(output_dir, "pooled_dlnm_random_effects_lag_summaries.csv"), row.names = FALSE)
+}
+
+lag_specific_files <- list.files(input_dir, pattern = "_dlnm_lag_specific_summaries\\.csv$", full.names = TRUE)
+if (length(lag_specific_files) > 0) {
+  site_lag_specific <- do.call(rbind, lapply(lag_specific_files, read.csv, stringsAsFactors = FALSE))
+
+  if (!all(c("log_rr", "log_rr_se") %in% names(site_lag_specific))) {
+    site_lag_specific$log_rr <- log(site_lag_specific$rr)
+    site_lag_specific$log_rr_se <- (log(site_lag_specific$rr_high) - log(site_lag_specific$rr_low)) / (2 * 1.96)
+  }
+
+  lag_specific_groups <- unique(site_lag_specific[, c("stratum", "model", "reference_type", "lag", "lag_label")])
+  lag_specific_rows <- list()
+  for (i in seq_len(nrow(lag_specific_groups))) {
+    g <- lag_specific_groups[i, , drop = FALSE]
+    dat <- site_lag_specific[
+      site_lag_specific$stratum == g$stratum &
+        site_lag_specific$model == g$model &
+        site_lag_specific$reference_type == g$reference_type &
+        site_lag_specific$lag == g$lag,
+      ,
+      drop = FALSE
+    ]
+    pooled <- pool_der_simonian_laird(dat$log_rr, dat$log_rr_se)
+    if (is.null(pooled)) next
+    pooled$stratum <- g$stratum
+    pooled$model <- g$model
+    pooled$reference_type <- g$reference_type
+    pooled$lag <- g$lag
+    pooled$lag_label <- g$lag_label
+    lag_specific_rows[[i]] <- pooled
+  }
+
+  pooled_lag_specific <- do.call(rbind, lag_specific_rows)
+  if (is.null(pooled_lag_specific)) {
+    pooled_lag_specific <- data.frame()
+  } else {
+    pooled_lag_specific <- pooled_lag_specific[order(pooled_lag_specific$stratum, pooled_lag_specific$model, pooled_lag_specific$reference_type, pooled_lag_specific$lag), ]
+    pooled_lag_specific <- pooled_lag_specific[, c("stratum", "model", "reference_type", "lag", "lag_label", setdiff(names(pooled_lag_specific), c("stratum", "model", "reference_type", "lag", "lag_label")))]
+  }
+
+  write.csv(site_lag_specific, file.path(output_dir, "all_site_dlnm_lag_specific_summaries.csv"), row.names = FALSE)
+  write.csv(pooled_lag_specific, file.path(output_dir, "pooled_dlnm_random_effects_lag_specific_summaries.csv"), row.names = FALSE)
+}
+
 message("Wrote pooled federated DLNM results to ", output_dir)

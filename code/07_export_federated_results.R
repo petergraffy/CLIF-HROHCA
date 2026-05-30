@@ -42,6 +42,8 @@ results_path <- file.path(repo_root, "output", "final", "ohca_tmax", "manuscript
 curves_path <- file.path(repo_root, "output", "final", "ohca_tmax", "manuscript", "manuscript_dlnm_curves.csv")
 reduced_coef_path <- file.path(repo_root, "output", "final", "ohca_tmax", "manuscript", "manuscript_dlnm_reduced_coefficients.csv")
 reduced_vcov_path <- file.path(repo_root, "output", "final", "ohca_tmax", "manuscript", "manuscript_dlnm_reduced_vcov.csv")
+lag_summaries_path <- file.path(repo_root, "output", "final", "ohca_tmax", "manuscript", "manuscript_dlnm_lag_summaries.csv")
+lag_specific_summaries_path <- file.path(repo_root, "output", "final", "ohca_tmax", "manuscript", "manuscript_dlnm_lag_specific_summaries.csv")
 table1_path <- file.path(repo_root, "output", "final", "descriptive", "table1_ohca_cohort_characteristics.csv")
 outcomes_path <- file.path(repo_root, "output", "final", "descriptive", "ohca_outcomes_summary.csv")
 heat_table2_path <- file.path(repo_root, "output", "final", "descriptive", "table2_heat_related_vs_non_heat_related_ohca.csv")
@@ -113,6 +115,20 @@ if (file.exists(reduced_vcov_path)) {
   reduced_vcov$site_name <- site_name
   reduced_vcov <- reduced_vcov[, c("site_name", setdiff(names(reduced_vcov), "site_name"))]
   write.csv(reduced_vcov, file.path(output_dir, paste0(site_name, "_dlnm_reduced_vcov.csv")), row.names = FALSE)
+}
+
+if (file.exists(lag_summaries_path)) {
+  lag_summaries <- read.csv(lag_summaries_path, stringsAsFactors = FALSE)
+  lag_summaries$site_name <- site_name
+  lag_summaries <- lag_summaries[, c("site_name", setdiff(names(lag_summaries), "site_name"))]
+  write.csv(lag_summaries, file.path(output_dir, paste0(site_name, "_dlnm_lag_summaries.csv")), row.names = FALSE)
+}
+
+if (file.exists(lag_specific_summaries_path)) {
+  lag_specific_summaries <- read.csv(lag_specific_summaries_path, stringsAsFactors = FALSE)
+  lag_specific_summaries$site_name <- site_name
+  lag_specific_summaries <- lag_specific_summaries[, c("site_name", setdiff(names(lag_specific_summaries), "site_name"))]
+  write.csv(lag_specific_summaries, file.path(output_dir, paste0(site_name, "_dlnm_lag_specific_summaries.csv")), row.names = FALSE)
 }
 
 if (file.exists(table1_path)) {

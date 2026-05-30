@@ -70,13 +70,15 @@ heat95_threshold <- thresholds |>
   summarise(threshold = median(.data$heat_threshold_tmax_c, na.rm = TRUE)) |>
   pull(.data$threshold)
 
-label_targets <- c(30, heat90_threshold, heat95_threshold)
+mrt_temp <- curve$tmax_mean_c[which.min(curve$cumulative_rr)]
+
+label_targets <- c(mrt_temp, heat90_threshold, heat95_threshold)
 label_points <- do.call(rbind, lapply(label_targets, function(target) {
   curve[which.min(abs(curve$tmax_mean_c - target)), , drop = FALSE]
 })) |>
   mutate(
-    label_type = c("MRT reference", "90th percentile", "95th percentile"),
-    label_x = c(27.1, 31.1, 35.3),
+    label_type = c("MRT", "90th percentile", "95th percentile"),
+    label_x = c(26.8, 31.0, 35.3),
     label_y = c(0.78, 1.78, 2.22),
     label = sprintf(
       "%s\n%.1f \u00b0C: RR %.2f\n95%% CI %.2f-%.2f",
@@ -108,7 +110,7 @@ figure1 <- ggplot(curve, aes(x = .data$tmax_mean_c, y = .data$cumulative_rr)) +
     alpha = 0.18
   ) +
   geom_hline(yintercept = 1, linewidth = 0.45, linetype = "dashed", color = "#5F6368") +
-  geom_vline(xintercept = 30, linewidth = 0.45, linetype = "dotted", color = "#5F6368") +
+  geom_vline(xintercept = mrt_temp, linewidth = 0.45, linetype = "dotted", color = "#5F6368") +
   geom_ribbon(
     aes(ymin = .data$cumulative_rr_low, ymax = .data$cumulative_rr_high),
     fill = "#7EAED3",
@@ -175,6 +177,12 @@ figure1 <- ggplot(curve, aes(x = .data$tmax_mean_c, y = .data$cumulative_rr)) +
 write.csv(
   curve,
   file.path(output_dir, "figure1_dlnm_mrt_curve_source.csv"),
+  row.names = FALSE
+)
+
+write.csv(
+  label_points,
+  file.path(output_dir, "figure1_dlnm_mrt_curve_label_points.csv"),
   row.names = FALSE
 )
 

@@ -394,7 +394,7 @@ run_dlnm_spec <- function(
     center <- if (reference == "median") initial_center else grid[which.min(pred_initial$allRRfit)]
     list(
       center = center,
-      pred = crosspred(cb_temp, fit, cen = center, at = grid),
+      pred = crosspred(cb_temp, fit, cen = center, at = grid, cumul = TRUE),
       reduced = crossreduce(cb_temp, fit, cen = center)
     )
   }, error = function(e) {
@@ -479,8 +479,66 @@ run_dlnm_spec <- function(
   reduced_vcov$reference_temp_c <- center
   reduced_vcov <- reduced_vcov[, c("stratum", "model", "reference_type", "reference_temp_c", "coefficient_row", "coefficient_col", "covariance")]
 
+  lag_summary <- NULL
+  if (!is.null(pred$cumRRfit) && !is.null(pred$cumRRlow) && !is.null(pred$cumRRhigh)) {
+    lag_names <- colnames(pred$cumRRfit)
+    if (is.null(lag_names)) lag_names <- paste0("lag", seq_len(ncol(pred$cumRRfit)) - 1L)
+    lag_ends <- suppressWarnings(as.integer(gsub("[^0-9]", "", lag_names)))
+    if (any(!is.finite(lag_ends))) lag_ends <- seq_len(ncol(pred$cumRRfit)) - 1L
+    lag_summary <- data.frame(
+      stratum = label,
+      model = model,
+      reference_type = reference,
+      reference_temp_c = center,
+      hot_temp_c = hot_temp,
+      lag_start = 0L,
+      lag_end = lag_ends,
+      lag_label = ifelse(lag_ends == 0L, "Lag 0", paste0("Lag 0-", lag_ends)),
+      cumulative_rr = as.numeric(pred$cumRRfit[hot_index, ]),
+      cumulative_rr_low = as.numeric(pred$cumRRlow[hot_index, ]),
+      cumulative_rr_high = as.numeric(pred$cumRRhigh[hot_index, ]),
+      stringsAsFactors = FALSE
+    )
+    lag_summary$log_rr <- log(lag_summary$cumulative_rr)
+    lag_summary$log_rr_se <- (
+      log(lag_summary$cumulative_rr_high) - log(lag_summary$cumulative_rr_low)
+    ) / (2 * 1.96)
+  }
+
+  lag_specific <- NULL
+  if (!is.null(pred$matRRfit) && !is.null(pred$matRRlow) && !is.null(pred$matRRhigh)) {
+    lag_names <- colnames(pred$matRRfit)
+    if (is.null(lag_names)) lag_names <- paste0("lag", seq_len(ncol(pred$matRRfit)) - 1L)
+    lag_values <- suppressWarnings(as.integer(gsub("[^0-9]", "", lag_names)))
+    if (any(!is.finite(lag_values))) lag_values <- seq_len(ncol(pred$matRRfit)) - 1L
+    lag_specific <- data.frame(
+      stratum = label,
+      model = model,
+      reference_type = reference,
+      reference_temp_c = center,
+      hot_temp_c = hot_temp,
+      lag = lag_values,
+      lag_label = paste0("Lag ", lag_values),
+      rr = as.numeric(pred$matRRfit[hot_index, ]),
+      rr_low = as.numeric(pred$matRRlow[hot_index, ]),
+      rr_high = as.numeric(pred$matRRhigh[hot_index, ]),
+      stringsAsFactors = FALSE
+    )
+    lag_specific$log_rr <- log(lag_specific$rr)
+    lag_specific$log_rr_se <- (
+      log(lag_specific$rr_high) - log(lag_specific$rr_low)
+    ) / (2 * 1.96)
+  }
+
   if (return_curve) {
-    return(list(result = result, curve = curve, reduced_coef = reduced_coef, reduced_vcov = reduced_vcov))
+    return(list(
+      result = result,
+      curve = curve,
+      reduced_coef = reduced_coef,
+      reduced_vcov = reduced_vcov,
+      lag_summary = lag_summary,
+      lag_specific = lag_specific
+    ))
   }
 
   result
@@ -527,12 +585,16 @@ results <- list()
 curve_rows <- list()
 reduced_coef_rows <- list()
 reduced_vcov_rows <- list()
+lag_summary_rows <- list()
+lag_specific_rows <- list()
 
 overall_primary <- run_dlnm_spec(model_df, "Overall", model = "primary_humidity_adjusted", reference = "median", return_curve = TRUE)
 results[["overall_primary"]] <- overall_primary$result
 curve_rows[["overall_primary"]] <- overall_primary$curve
 reduced_coef_rows[["overall_primary"]] <- overall_primary$reduced_coef
 reduced_vcov_rows[["overall_primary"]] <- overall_primary$reduced_vcov
+lag_summary_rows[["overall_primary"]] <- overall_primary$lag_summary
+lag_specific_rows[["overall_primary"]] <- overall_primary$lag_specific
 
 overall_pollution <- run_dlnm_spec(
   model_df,
@@ -546,12 +608,16 @@ results[["overall_pollution"]] <- overall_pollution$result
 curve_rows[["overall_pollution"]] <- overall_pollution$curve
 reduced_coef_rows[["overall_pollution"]] <- overall_pollution$reduced_coef
 reduced_vcov_rows[["overall_pollution"]] <- overall_pollution$reduced_vcov
+lag_summary_rows[["overall_pollution"]] <- overall_pollution$lag_summary
+lag_specific_rows[["overall_pollution"]] <- overall_pollution$lag_specific
 
 overall_mrt <- run_dlnm_spec(model_df, "Overall", model = "sensitivity_mrt_reference", reference = "mrt", return_curve = TRUE)
 results[["overall_mrt"]] <- overall_mrt$result
 curve_rows[["overall_mrt"]] <- overall_mrt$curve
 reduced_coef_rows[["overall_mrt"]] <- overall_mrt$reduced_coef
 reduced_vcov_rows[["overall_mrt"]] <- overall_mrt$reduced_vcov
+lag_summary_rows[["overall_mrt"]] <- overall_mrt$lag_summary
+lag_specific_rows[["overall_mrt"]] <- overall_mrt$lag_specific
 
 time_sensitivity_results <- list()
 for (time_df_candidate in c(3L, 4L, 6L)) {
@@ -598,6 +664,8 @@ for (nm in c("male","female","age_lt65","age_ge65","race_black","race_nonblack")
   if (!is.null(stratified$curve)) curve_rows[[paste0(nm, "_primary")]] <- stratified$curve
   if (!is.null(stratified$reduced_coef)) reduced_coef_rows[[paste0(nm, "_primary")]] <- stratified$reduced_coef
   if (!is.null(stratified$reduced_vcov)) reduced_vcov_rows[[paste0(nm, "_primary")]] <- stratified$reduced_vcov
+  if (!is.null(stratified$lag_summary)) lag_summary_rows[[paste0(nm, "_primary")]] <- stratified$lag_summary
+  if (!is.null(stratified$lag_specific)) lag_specific_rows[[paste0(nm, "_primary")]] <- stratified$lag_specific
 
   stratified_mrt <- run_dlnm_spec(
     merged,
@@ -614,15 +682,21 @@ for (nm in c("male","female","age_lt65","age_ge65","race_black","race_nonblack")
   if (!is.null(stratified_mrt$curve)) curve_rows[[paste0(nm, "_mrt")]] <- stratified_mrt$curve
   if (!is.null(stratified_mrt$reduced_coef)) reduced_coef_rows[[paste0(nm, "_mrt")]] <- stratified_mrt$reduced_coef
   if (!is.null(stratified_mrt$reduced_vcov)) reduced_vcov_rows[[paste0(nm, "_mrt")]] <- stratified_mrt$reduced_vcov
+  if (!is.null(stratified_mrt$lag_summary)) lag_summary_rows[[paste0(nm, "_mrt")]] <- stratified_mrt$lag_summary
+  if (!is.null(stratified_mrt$lag_specific)) lag_specific_rows[[paste0(nm, "_mrt")]] <- stratified_mrt$lag_specific
 }
 
 results_df <- do.call(rbind, results)
 curves_df <- do.call(rbind, curve_rows)
 reduced_coef_df <- do.call(rbind, reduced_coef_rows)
 reduced_vcov_df <- do.call(rbind, reduced_vcov_rows)
+lag_summary_df <- do.call(rbind, lag_summary_rows)
+lag_specific_df <- do.call(rbind, lag_specific_rows)
 write.csv(results_df, file.path(output_dir, "manuscript_dlnm_results.csv"), row.names = FALSE)
 write.csv(curves_df, file.path(output_dir, "manuscript_dlnm_curves.csv"), row.names = FALSE)
 write.csv(reduced_coef_df, file.path(output_dir, "manuscript_dlnm_reduced_coefficients.csv"), row.names = FALSE)
 write.csv(reduced_vcov_df, file.path(output_dir, "manuscript_dlnm_reduced_vcov.csv"), row.names = FALSE)
+write.csv(lag_summary_df, file.path(output_dir, "manuscript_dlnm_lag_summaries.csv"), row.names = FALSE)
+write.csv(lag_specific_df, file.path(output_dir, "manuscript_dlnm_lag_specific_summaries.csv"), row.names = FALSE)
 write.csv(time_sensitivity_df, file.path(output_dir, "manuscript_dlnm_time_adjustment_sensitivity.csv"), row.names = FALSE)
 message("Wrote manuscript-style DLNM results to ", output_dir)

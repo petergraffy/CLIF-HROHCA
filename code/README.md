@@ -38,7 +38,7 @@ Rscript code/00_install_or_restore_packages.R
 2. `01_build_ohca_cohort.R`: builds adult ICU OHCA hospitalizations using present-on-admission cardiac arrest diagnosis codes and applies hospital-aware county assignment.
 3. `02_build_icu_exposure_series.R`: builds the all-ICU daily patient-address exposure series used as the comparison denominator for daily OHCA models.
 4. `03_descriptive_tables.R`: creates aggregate OHCA cohort characteristics and outcomes.
-5. `04_dlnm_primary_and_sensitivity.R`: fits primary, pollution-adjusted, MRT-reference, time-adjustment sensitivity, and stratified DLNM models.
+5. `04_dlnm_primary_and_sensitivity.R`: fits primary, pollution-adjusted, MRT-reference, time-adjustment sensitivity, and stratified DLNM models, including cumulative lag-window and day-specific hot-temperature contrasts from lag 0 through lag 5.
 6. `05_heat_related_vs_non_heat_related_table.R`: creates warm-season heat-related vs non-heat-related OHCA comparison tables, 90th-percentile sensitivity tables, all-year sensitivity tables, ICU-hour clinical trajectories, cumulative incidence plots, CRRT summaries, and renal/metabolic phenotype summaries.
 7. `09_supplementary_ohca_outcome_models.R`: creates supplementary outcome models for same-day heat, 12-month pollution, death/hospice, vasopressors, ICU LOS, and IMV duration.
 8. `08_quality_checks.R`: creates aggregate cohort flow, denominator, admission-to-ICU timing, and care pathway quality checks.

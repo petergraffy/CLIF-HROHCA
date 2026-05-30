@@ -143,6 +143,8 @@ all_exports <- c(
   "all_year_heat_related_vs_non_heat_related_outcomes.csv",
   "dlnm_site_estimates.csv",
   "dlnm_curves.csv",
+  "dlnm_lag_summaries.csv",
+  "dlnm_lag_specific_summaries.csv",
   "adverse_outcome_models.csv",
   "continuous_outcome_models.csv",
   "pollution_12m_binary_outcome_models.csv",
@@ -259,6 +261,85 @@ if (nrow(dlnm_curves) > 0) {
     file.path(output_dir, "pooled_dlnm_curve_overall_mrt_reference.png"),
     "Pooled DLNM Curve: Overall MRT Reference Sensitivity"
   )
+}
+
+dlnm_lags <- combined$dlnm_lag_summaries
+if (nrow(dlnm_lags) > 0) {
+  if (!all(c("log_rr", "log_rr_se") %in% names(dlnm_lags))) {
+    dlnm_lags$log_rr <- log(suppressWarnings(as.numeric(dlnm_lags$cumulative_rr)))
+    dlnm_lags$log_rr_se <- se_from_ci(
+      suppressWarnings(as.numeric(dlnm_lags$cumulative_rr)),
+      suppressWarnings(as.numeric(dlnm_lags$cumulative_rr_low)),
+      suppressWarnings(as.numeric(dlnm_lags$cumulative_rr_high))
+    )
+  }
+  dlnm_lags$lag_start <- suppressWarnings(as.integer(dlnm_lags$lag_start))
+  dlnm_lags$lag_end <- suppressWarnings(as.integer(dlnm_lags$lag_end))
+  lag_groups <- unique(dlnm_lags[, c("stratum", "model", "reference_type", "lag_start", "lag_end", "lag_label")])
+  lag_rows <- vector("list", nrow(lag_groups))
+  for (i in seq_len(nrow(lag_groups))) {
+    idx <- rep(TRUE, nrow(dlnm_lags))
+    for (col in c("stratum", "model", "reference_type", "lag_start", "lag_end")) {
+      idx <- idx & dlnm_lags[[col]] == lag_groups[[col]][i]
+    }
+    pooled <- pool_der_simonian_laird(
+      suppressWarnings(as.numeric(dlnm_lags$log_rr[idx])),
+      suppressWarnings(as.numeric(dlnm_lags$log_rr_se[idx]))
+    )
+    if (is.null(pooled)) next
+    lag_rows[[i]] <- cbind(lag_groups[i, , drop = FALSE], pooled)
+  }
+  pooled_dlnm_lags <- do.call(rbind, lag_rows)
+  pooled_dlnm_lags <- pooled_dlnm_lags[order(
+    pooled_dlnm_lags$stratum,
+    pooled_dlnm_lags$model,
+    pooled_dlnm_lags$reference_type,
+    pooled_dlnm_lags$lag_end
+  ), ]
+  names(pooled_dlnm_lags)[names(pooled_dlnm_lags) == "ratio"] <- "cumulative_rr"
+  names(pooled_dlnm_lags)[names(pooled_dlnm_lags) == "ci_low"] <- "cumulative_rr_low"
+  names(pooled_dlnm_lags)[names(pooled_dlnm_lags) == "ci_high"] <- "cumulative_rr_high"
+  write.csv(dlnm_lags, file.path(output_dir, "all_sites_dlnm_lag_summaries.csv"), row.names = FALSE)
+  write.csv(pooled_dlnm_lags, file.path(output_dir, "pooled_dlnm_random_effects_lag_summaries.csv"), row.names = FALSE)
+}
+
+dlnm_lag_specific <- combined$dlnm_lag_specific_summaries
+if (nrow(dlnm_lag_specific) > 0) {
+  if (!all(c("log_rr", "log_rr_se") %in% names(dlnm_lag_specific))) {
+    dlnm_lag_specific$log_rr <- log(suppressWarnings(as.numeric(dlnm_lag_specific$rr)))
+    dlnm_lag_specific$log_rr_se <- se_from_ci(
+      suppressWarnings(as.numeric(dlnm_lag_specific$rr)),
+      suppressWarnings(as.numeric(dlnm_lag_specific$rr_low)),
+      suppressWarnings(as.numeric(dlnm_lag_specific$rr_high))
+    )
+  }
+  dlnm_lag_specific$lag <- suppressWarnings(as.integer(dlnm_lag_specific$lag))
+  lag_specific_groups <- unique(dlnm_lag_specific[, c("stratum", "model", "reference_type", "lag", "lag_label")])
+  lag_specific_rows <- vector("list", nrow(lag_specific_groups))
+  for (i in seq_len(nrow(lag_specific_groups))) {
+    idx <- rep(TRUE, nrow(dlnm_lag_specific))
+    for (col in c("stratum", "model", "reference_type", "lag")) {
+      idx <- idx & dlnm_lag_specific[[col]] == lag_specific_groups[[col]][i]
+    }
+    pooled <- pool_der_simonian_laird(
+      suppressWarnings(as.numeric(dlnm_lag_specific$log_rr[idx])),
+      suppressWarnings(as.numeric(dlnm_lag_specific$log_rr_se[idx]))
+    )
+    if (is.null(pooled)) next
+    lag_specific_rows[[i]] <- cbind(lag_specific_groups[i, , drop = FALSE], pooled)
+  }
+  pooled_dlnm_lag_specific <- do.call(rbind, lag_specific_rows)
+  pooled_dlnm_lag_specific <- pooled_dlnm_lag_specific[order(
+    pooled_dlnm_lag_specific$stratum,
+    pooled_dlnm_lag_specific$model,
+    pooled_dlnm_lag_specific$reference_type,
+    pooled_dlnm_lag_specific$lag
+  ), ]
+  names(pooled_dlnm_lag_specific)[names(pooled_dlnm_lag_specific) == "ratio"] <- "rr"
+  names(pooled_dlnm_lag_specific)[names(pooled_dlnm_lag_specific) == "ci_low"] <- "rr_low"
+  names(pooled_dlnm_lag_specific)[names(pooled_dlnm_lag_specific) == "ci_high"] <- "rr_high"
+  write.csv(dlnm_lag_specific, file.path(output_dir, "all_sites_dlnm_lag_specific_summaries.csv"), row.names = FALSE)
+  write.csv(pooled_dlnm_lag_specific, file.path(output_dir, "pooled_dlnm_random_effects_lag_specific_summaries.csv"), row.names = FALSE)
 }
 
 adverse <- combined$adverse_outcome_models

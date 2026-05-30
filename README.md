@@ -141,6 +141,8 @@ Core analytic outputs:
 
 - `SITE_dlnm_site_estimates.csv`
 - `SITE_dlnm_curves.csv`
+- `SITE_dlnm_lag_summaries.csv`
+- `SITE_dlnm_lag_specific_summaries.csv`
 - `SITE_dlnm_reduced_coefficients.csv`
 - `SITE_dlnm_reduced_vcov.csv`
 - `SITE_dlnm_time_sensitivity.csv`
