@@ -30,6 +30,7 @@ suppressPackageStartupMessages({
 })
 
 ohca_counts_path <- file.path(repo_root, "output", "intermediate", "cohorts", "ohca", "ohca_daily_counts_2018_2024.csv")
+ohca_cohort_path <- file.path(repo_root, "output", "intermediate", "cohorts", "ohca", "ohca_poa_icu_2018_2024.csv")
 daily_exposure_path <- file.path(repo_root, "output", "intermediate", "cohorts", "all_icu", "all_icu_daily_patient_address_tmax_2018_2024.csv")
 output_dir <- file.path(repo_root, "output", "final", "ohca_tmax", "icu_admission_rate")
 figure_dir <- file.path(repo_root, "output", "final", "manuscript_figures")
@@ -114,6 +115,7 @@ build_formula <- function(extra_terms = character(), time_term = "ns(time_index,
 
 run_rate_dlnm_spec <- function(
   df,
+  label = "Overall",
   model,
   extra_terms = c("ns(icu_patient_address_mean_rmax_pct, df = RMAX_DF)"),
   reference = c("median", "mrt"),
@@ -170,7 +172,7 @@ run_rate_dlnm_spec <- function(
 
   result <- data.frame(
     analysis_period = ANALYSIS_PERIOD_LABEL,
-    stratum = "Overall",
+    stratum = label,
     model = model,
     n_days = nrow(df),
     n_ohca = sum(df$ohca_admissions, na.rm = TRUE),
@@ -198,7 +200,7 @@ run_rate_dlnm_spec <- function(
 
   curve <- data.frame(
     analysis_period = ANALYSIS_PERIOD_LABEL,
-    stratum = "Overall",
+    stratum = label,
     model = model,
     reference_type = reference,
     reference_temp_c = center,
@@ -213,7 +215,7 @@ run_rate_dlnm_spec <- function(
 
   reduced_coef <- data.frame(
     analysis_period = ANALYSIS_PERIOD_LABEL,
-    stratum = "Overall",
+    stratum = label,
     model = model,
     reference_type = reference,
     reference_temp_c = center,
@@ -226,7 +228,7 @@ run_rate_dlnm_spec <- function(
   reduced_vcov <- as.data.frame(as.table(reduced_vcov_matrix), stringsAsFactors = FALSE)
   names(reduced_vcov) <- c("coefficient_row", "coefficient_col", "covariance")
   reduced_vcov$analysis_period <- ANALYSIS_PERIOD_LABEL
-  reduced_vcov$stratum <- "Overall"
+  reduced_vcov$stratum <- label
   reduced_vcov$model <- model
   reduced_vcov$reference_type <- reference
   reduced_vcov$reference_temp_c <- center
@@ -240,7 +242,7 @@ run_rate_dlnm_spec <- function(
     if (any(!is.finite(lag_ends))) lag_ends <- seq_len(ncol(pred$cumRRfit)) - 1L
     lag_summary <- data.frame(
       analysis_period = ANALYSIS_PERIOD_LABEL,
-      stratum = "Overall",
+      stratum = label,
       model = model,
       reference_type = reference,
       reference_temp_c = center,
@@ -267,7 +269,7 @@ run_rate_dlnm_spec <- function(
     if (any(!is.finite(lag_values))) lag_values <- seq_len(ncol(pred$matRRfit)) - 1L
     lag_specific <- data.frame(
       analysis_period = ANALYSIS_PERIOD_LABEL,
-      stratum = "Overall",
+      stratum = label,
       model = model,
       reference_type = reference,
       reference_temp_c = center,
@@ -324,6 +326,26 @@ model_df <- model_df[
   drop = FALSE
 ]
 
+cohort <- read.csv(ohca_cohort_path, stringsAsFactors = FALSE)
+cohort$admission_date <- as.Date(cohort$admission_date)
+cohort$age_group <- ifelse(as.numeric(cohort$age_at_admission) >= 65, ">=65", "<65")
+cohort$race_group <- ifelse(is_black_race(cohort$race_category), "Black", "Non-Black")
+
+make_stratum_model_df <- function(subset_df) {
+  counts <- aggregate(hospitalization_id ~ admission_date, data = subset_df, FUN = function(x) length(unique(x)))
+  names(counts)[2] <- "ohca_admissions"
+  out <- model_df
+  out <- merge(
+    out[, setdiff(names(out), "ohca_admissions"), drop = FALSE],
+    counts,
+    by = "admission_date",
+    all.x = TRUE,
+    sort = TRUE
+  )
+  out$ohca_admissions[is.na(out$ohca_admissions)] <- 0L
+  out
+}
+
 rate_denominator_summary <- data.frame(
   analysis_period = ANALYSIS_PERIOD_LABEL,
   n_days = nrow(model_df),
@@ -359,22 +381,59 @@ rate_time_series <- model_df |>
 fits <- list(
   overall_median_humidity = run_rate_dlnm_spec(
     model_df,
+    label = "Overall",
     model = "rate_median_humidity_adjusted",
     reference = "median"
   ),
   overall_median_pollution = run_rate_dlnm_spec(
     model_df,
+    label = "Overall",
     model = "rate_median_humidity_pollution_adjusted",
     extra_terms = c("ns(icu_patient_address_mean_rmax_pct, df = RMAX_DF)", "icu_patient_address_mean_no2", "icu_patient_address_mean_pm25"),
     reference = "median"
   ),
   overall_mrt_pollution = run_rate_dlnm_spec(
     model_df,
+    label = "Overall",
     model = "rate_mrt_humidity_pollution_adjusted",
     extra_terms = c("ns(icu_patient_address_mean_rmax_pct, df = RMAX_DF)", "icu_patient_address_mean_no2", "icu_patient_address_mean_pm25"),
     reference = "mrt"
   )
 )
+
+strata_specs <- list(
+  male = list(label = "Male", df = cohort[is_male(cohort$sex_category), ]),
+  female = list(label = "Female", df = cohort[is_female(cohort$sex_category), ]),
+  age_lt65 = list(label = "<65", df = cohort[cohort$age_group == "<65", ]),
+  age_ge65 = list(label = ">=65", df = cohort[cohort$age_group == ">=65", ]),
+  race_black = list(label = "Black", df = cohort[cohort$race_group == "Black", ]),
+  race_nonblack = list(label = "Non-Black", df = cohort[cohort$race_group == "Non-Black", ])
+)
+
+for (nm in names(strata_specs)) {
+  spec <- strata_specs[[nm]]
+  stratum_model_df <- make_stratum_model_df(spec$df)
+  fits[[paste0(nm, "_median_humidity")]] <- run_rate_dlnm_spec(
+    stratum_model_df,
+    label = spec$label,
+    model = "rate_stratified_humidity_adjusted",
+    reference = "median"
+  )
+  fits[[paste0(nm, "_median_pollution")]] <- run_rate_dlnm_spec(
+    stratum_model_df,
+    label = spec$label,
+    model = "rate_stratified_humidity_pollution_adjusted",
+    extra_terms = c("ns(icu_patient_address_mean_rmax_pct, df = RMAX_DF)", "icu_patient_address_mean_no2", "icu_patient_address_mean_pm25"),
+    reference = "median"
+  )
+  fits[[paste0(nm, "_mrt_pollution")]] <- run_rate_dlnm_spec(
+    stratum_model_df,
+    label = spec$label,
+    model = "rate_stratified_mrt_humidity_pollution_adjusted",
+    extra_terms = c("ns(icu_patient_address_mean_rmax_pct, df = RMAX_DF)", "icu_patient_address_mean_no2", "icu_patient_address_mean_pm25"),
+    reference = "mrt"
+  )
+}
 
 results_df <- do.call(rbind, lapply(fits, `[[`, "result"))
 curves_df <- do.call(rbind, lapply(fits, `[[`, "curve"))
