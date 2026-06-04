@@ -169,6 +169,8 @@ Core analytic outputs:
 - `SITE_table1.csv`
 - `SITE_outcomes.csv`
 - `SITE_cohort_flow.csv`
+- `SITE_ohca_ed_only_death_never_icu_summary.csv`
+- `SITE_ohca_ed_only_death_never_icu_pathway_audit.csv`
 
 Heat-related OHCA phenotype outputs:
 

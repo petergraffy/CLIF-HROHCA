@@ -22,6 +22,7 @@ repo_root <- normalizePath(file.path(dirname(get_script_path()), ".."), winslash
 scripts <- c(
   "00_install_or_restore_packages.R",
   "01_build_ohca_cohort.R",
+  "01b_ohca_ed_death_never_icu.R",
   "02_build_icu_exposure_series.R",
   "03_descriptive_tables.R",
   "04_dlnm_primary_and_sensitivity.R",

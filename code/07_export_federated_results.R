@@ -38,6 +38,9 @@ dir.create(figure_export_dir, recursive = TRUE, showWarnings = FALSE)
 config <- jsonlite::fromJSON(config_path)
 site_name <- config$site_name
 
+legacy_exports <- file.path(output_dir, paste0(site_name, "_ohca_ed_death_never_icu_summary.csv"))
+if (length(legacy_exports) > 0) unlink(legacy_exports[file.exists(legacy_exports)])
+
 results_path <- file.path(repo_root, "output", "final", "ohca_tmax", "manuscript", "manuscript_dlnm_results.csv")
 curves_path <- file.path(repo_root, "output", "final", "ohca_tmax", "manuscript", "manuscript_dlnm_curves.csv")
 reduced_coef_path <- file.path(repo_root, "output", "final", "ohca_tmax", "manuscript", "manuscript_dlnm_reduced_coefficients.csv")
@@ -109,6 +112,8 @@ icu_timing_path <- file.path(repo_root, "output", "final", "quality_checks", "oh
 icu_timing_bins_path <- file.path(repo_root, "output", "final", "quality_checks", "ohca_admission_to_icu_timing_bins.csv")
 care_pathway_path <- file.path(repo_root, "output", "final", "quality_checks", "ohca_pre_icu_care_pathway_summary.csv")
 first_location_path <- file.path(repo_root, "output", "final", "quality_checks", "ohca_first_location_summary.csv")
+ed_death_never_icu_path <- file.path(repo_root, "output", "final", "descriptive", "ohca_ed_only_death_never_icu_summary.csv")
+ed_death_never_icu_pathway_path <- file.path(repo_root, "output", "final", "descriptive", "ohca_ed_only_death_never_icu_pathway_audit.csv")
 
 results <- read.csv(results_path, stringsAsFactors = FALSE)
 results$site_name <- site_name
@@ -299,7 +304,9 @@ for (item in list(
   list(path = icu_timing_path, suffix = "icu_timing_summary"),
   list(path = icu_timing_bins_path, suffix = "icu_timing_bins"),
   list(path = care_pathway_path, suffix = "care_pathway_summary"),
-  list(path = first_location_path, suffix = "first_location_summary")
+  list(path = first_location_path, suffix = "first_location_summary"),
+  list(path = ed_death_never_icu_path, suffix = "ohca_ed_only_death_never_icu_summary"),
+  list(path = ed_death_never_icu_pathway_path, suffix = "ohca_ed_only_death_never_icu_pathway_audit")
 )) {
   if (file.exists(item$path)) {
     dat <- read.csv(item$path, stringsAsFactors = FALSE)
