@@ -49,6 +49,14 @@ lag30_surface_path <- file.path(repo_root, "output", "final", "ohca_tmax", "lag_
 lag30_hot_lag_path <- file.path(repo_root, "output", "final", "ohca_tmax", "lag_diagnostics", "lag30_hot_temperature_lag_specific_rr.csv")
 lag30_hot_cumulative_path <- file.path(repo_root, "output", "final", "ohca_tmax", "lag_diagnostics", "lag30_hot_temperature_cumulative_rr_by_lag.csv")
 lag30_temperature_distribution_path <- file.path(repo_root, "output", "final", "ohca_tmax", "lag_diagnostics", "lag30_temperature_distribution_source.csv")
+rate_dlnm_results_path <- file.path(repo_root, "output", "final", "ohca_tmax", "icu_admission_rate", "ohca_icu_admission_rate_dlnm_results.csv")
+rate_dlnm_curves_path <- file.path(repo_root, "output", "final", "ohca_tmax", "icu_admission_rate", "ohca_icu_admission_rate_dlnm_curves.csv")
+rate_dlnm_reduced_coef_path <- file.path(repo_root, "output", "final", "ohca_tmax", "icu_admission_rate", "ohca_icu_admission_rate_dlnm_reduced_coefficients.csv")
+rate_dlnm_reduced_vcov_path <- file.path(repo_root, "output", "final", "ohca_tmax", "icu_admission_rate", "ohca_icu_admission_rate_dlnm_reduced_vcov.csv")
+rate_dlnm_lag_summaries_path <- file.path(repo_root, "output", "final", "ohca_tmax", "icu_admission_rate", "ohca_icu_admission_rate_dlnm_lag_summaries.csv")
+rate_dlnm_lag_specific_summaries_path <- file.path(repo_root, "output", "final", "ohca_tmax", "icu_admission_rate", "ohca_icu_admission_rate_dlnm_lag_specific_summaries.csv")
+rate_dlnm_denominator_summary_path <- file.path(repo_root, "output", "final", "ohca_tmax", "icu_admission_rate", "ohca_icu_admission_rate_denominator_summary.csv")
+rate_daily_timeseries_path <- file.path(repo_root, "output", "final", "ohca_tmax", "icu_admission_rate", "ohca_icu_admission_rate_daily_timeseries.csv")
 case_crossover_results_path <- file.path(repo_root, "output", "final", "ohca_tmax", "case_crossover", "case_crossover_dlnm_results.csv")
 case_crossover_curves_path <- file.path(repo_root, "output", "final", "ohca_tmax", "case_crossover", "case_crossover_dlnm_curves.csv")
 case_crossover_reduced_coef_path <- file.path(repo_root, "output", "final", "ohca_tmax", "case_crossover", "case_crossover_dlnm_reduced_coefficients.csv")
@@ -149,6 +157,24 @@ for (item in list(
   list(path = lag30_hot_lag_path, suffix = "lag30_hot_temperature_lag_specific_rr"),
   list(path = lag30_hot_cumulative_path, suffix = "lag30_hot_temperature_cumulative_rr_by_lag"),
   list(path = lag30_temperature_distribution_path, suffix = "lag30_temperature_distribution")
+)) {
+  if (file.exists(item$path)) {
+    dat <- read.csv(item$path, stringsAsFactors = FALSE)
+    dat$site_name <- site_name
+    dat <- dat[, c("site_name", setdiff(names(dat), "site_name"))]
+    write.csv(dat, file.path(output_dir, paste0(site_name, "_", item$suffix, ".csv")), row.names = FALSE)
+  }
+}
+
+for (item in list(
+  list(path = rate_dlnm_results_path, suffix = "ohca_icu_admission_rate_dlnm_site_estimates"),
+  list(path = rate_dlnm_curves_path, suffix = "ohca_icu_admission_rate_dlnm_curves"),
+  list(path = rate_dlnm_reduced_coef_path, suffix = "ohca_icu_admission_rate_dlnm_reduced_coefficients"),
+  list(path = rate_dlnm_reduced_vcov_path, suffix = "ohca_icu_admission_rate_dlnm_reduced_vcov"),
+  list(path = rate_dlnm_lag_summaries_path, suffix = "ohca_icu_admission_rate_dlnm_lag_summaries"),
+  list(path = rate_dlnm_lag_specific_summaries_path, suffix = "ohca_icu_admission_rate_dlnm_lag_specific_summaries"),
+  list(path = rate_dlnm_denominator_summary_path, suffix = "ohca_icu_admission_rate_denominator_summary"),
+  list(path = rate_daily_timeseries_path, suffix = "ohca_icu_admission_rate_daily_timeseries")
 )) {
   if (file.exists(item$path)) {
     dat <- read.csv(item$path, stringsAsFactors = FALSE)

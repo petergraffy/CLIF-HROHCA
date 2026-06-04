@@ -151,6 +151,14 @@ Core analytic outputs:
 - `SITE_lag30_hot_temperature_lag_specific_rr.csv`
 - `SITE_lag30_hot_temperature_cumulative_rr_by_lag.csv`
 - `SITE_lag30_temperature_distribution.csv`
+- `SITE_ohca_icu_admission_rate_dlnm_site_estimates.csv`
+- `SITE_ohca_icu_admission_rate_dlnm_curves.csv`
+- `SITE_ohca_icu_admission_rate_dlnm_lag_summaries.csv`
+- `SITE_ohca_icu_admission_rate_dlnm_lag_specific_summaries.csv`
+- `SITE_ohca_icu_admission_rate_dlnm_reduced_coefficients.csv`
+- `SITE_ohca_icu_admission_rate_dlnm_reduced_vcov.csv`
+- `SITE_ohca_icu_admission_rate_denominator_summary.csv`
+- `SITE_ohca_icu_admission_rate_daily_timeseries.csv`
 - `SITE_case_crossover_dlnm_site_estimates.csv`
 - `SITE_case_crossover_dlnm_curves.csv`
 - `SITE_case_crossover_dlnm_lag_summaries.csv`

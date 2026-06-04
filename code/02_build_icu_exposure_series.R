@@ -87,6 +87,10 @@ all_icu <- hosp |>
 all_icu <- apply_site_county_assignment(all_icu, repo_root, config) |>
   mutate(year = as.integer(format(.data$admission_date, "%Y")))
 
+daily_all_icu_counts <- all_icu |>
+  group_by(.data$admission_date) |>
+  summarise(n_total_icu_admissions = n_distinct(.data$hospitalization_id), .groups = "drop")
+
 merged <- all_icu |>
   filter(!is.na(.data$county_fips)) |>
   select("hospitalization_id", "admission_date", "county_fips", "year") |>
@@ -111,6 +115,8 @@ daily <- merged |>
     icu_patient_address_mean_pm25 = mean(.data$pm25_mean, na.rm = TRUE),
     .groups = "drop"
   ) |>
+  left_join(daily_all_icu_counts, by = "admission_date") |>
+  relocate("n_total_icu_admissions", .after = "admission_date") |>
   mutate(across(where(is.numeric), ~ ifelse(is.nan(.x), NA_real_, .x))) |>
   arrange(.data$admission_date)
 
