@@ -36,6 +36,8 @@ END_DATE <- as_utc_datetime("2025-01-01")
 ADULT_AGE_YEARS <- 18
 OHCA_ICD10_PREFIXES <- c("I46")
 OHCA_ICD9_PREFIXES <- c("4275")
+MAX_HOURS_ADMISSION_TO_ICU <- 24
+ALLOWED_OHCA_CARE_PATHWAYS <- c("icu", "ed -> icu", "ed -> procedural -> icu")
 
 norm_code <- function(x) {
   x |>
@@ -68,6 +70,22 @@ derive_poa_flag <- function(df, diagnosis_source) {
   }
   if (identical(diagnosis_source, "admission_diagnosis")) return(rep(TRUE, nrow(df)))
   rep(FALSE, nrow(df))
+}
+
+normalize_location_category <- function(x) {
+  clean <- x |>
+    tidyr::replace_na("Unknown") |>
+    as.character() |>
+    stringr::str_squish() |>
+    stringr::str_to_lower()
+  dplyr::na_if(clean, "")
+}
+
+collapse_pathway <- function(x) {
+  x <- tidyr::replace_na(x, "unknown")
+  if (length(x) == 0L) return("unknown")
+  x <- x[c(TRUE, x[-1] != x[-length(x)])]
+  paste(x, collapse = " -> ")
 }
 
 config <- load_project_config(repo_root)
@@ -154,7 +172,32 @@ all_icu <- hosp |>
   inner_join(icu_bounds, by = "hospitalization_id") |>
   left_join(hospital_lookup, by = "hospitalization_id") |>
   left_join(patient_min, by = "patient_id") |>
+  mutate(hours_admission_to_icu = as.numeric(difftime(.data$first_icu_in, .data$admission_dttm, units = "hours"))) |>
   arrange(.data$admission_dttm, .data$hospitalization_id)
+
+adt_pre_icu <- adt_min |>
+  inner_join(all_icu |> select("hospitalization_id", "first_icu_in"), by = "hospitalization_id") |>
+  filter(!is.na(.data$in_dttm), !is.na(.data$first_icu_in), .data$in_dttm <= .data$first_icu_in) |>
+  arrange(.data$hospitalization_id, .data$in_dttm, .data$out_dttm) |>
+  mutate(location_category_clean = normalize_location_category(.data$location_category))
+
+care_pathways <- adt_pre_icu |>
+  group_by(.data$hospitalization_id) |>
+  summarise(
+    care_pathway_to_icu = collapse_pathway(.data$location_category_clean),
+    first_location_category = first(.data$location_category_clean),
+    .groups = "drop"
+  )
+
+all_icu <- all_icu |>
+  left_join(care_pathways, by = "hospitalization_id") |>
+  mutate(
+    care_pathway_to_icu = tidyr::replace_na(.data$care_pathway_to_icu, "unknown"),
+    first_location_category = tidyr::replace_na(.data$first_location_category, "unknown"),
+    allowed_ohca_care_pathway = .data$care_pathway_to_icu %in% ALLOWED_OHCA_CARE_PATHWAYS,
+    icu_entry_within_24h = !is.na(.data$hours_admission_to_icu) &
+      .data$hours_admission_to_icu < MAX_HOURS_ADMISSION_TO_ICU
+  )
 
 dx <- diagnosis |>
   transmute(
@@ -187,9 +230,41 @@ dx_ohca <- dx |>
     .groups = "drop"
   )
 
-ohca <- all_icu |>
+ohca_unrestricted <- all_icu |>
   inner_join(dx_ohca, by = "hospitalization_id") |>
   arrange(.data$admission_dttm, .data$hospitalization_id)
+
+cohort_restriction_summary <- tibble::tibble(
+  site_name = site_name,
+  step = c(
+    "OHCA present-on-admission ICU admissions",
+    "Allowed ICU entry pathway",
+    "Allowed pathway and ICU entry <24 hours"
+  ),
+  n = c(
+    dplyr::n_distinct(ohca_unrestricted$hospitalization_id),
+    dplyr::n_distinct(ohca_unrestricted$hospitalization_id[ohca_unrestricted$allowed_ohca_care_pathway]),
+    dplyr::n_distinct(ohca_unrestricted$hospitalization_id[
+      ohca_unrestricted$allowed_ohca_care_pathway & ohca_unrestricted$icu_entry_within_24h
+    ])
+  )
+) |>
+  mutate(n_excluded_since_previous = dplyr::lag(.data$n) - .data$n)
+
+excluded_pathway_summary <- ohca_unrestricted |>
+  filter(!.data$allowed_ohca_care_pathway | !.data$icu_entry_within_24h) |>
+  mutate(
+    exclusion_reason = case_when(
+      !.data$allowed_ohca_care_pathway & !.data$icu_entry_within_24h ~ "pathway_not_allowed_and_icu_entry_24h_or_missing",
+      !.data$allowed_ohca_care_pathway ~ "pathway_not_allowed",
+      !.data$icu_entry_within_24h ~ "icu_entry_24h_or_missing",
+      TRUE ~ "included"
+    )
+  ) |>
+  count(.data$exclusion_reason, .data$care_pathway_to_icu, name = "n", sort = TRUE)
+
+ohca <- ohca_unrestricted |>
+  filter(.data$allowed_ohca_care_pathway, .data$icu_entry_within_24h)
 
 ohca <- apply_site_county_assignment(ohca, repo_root, config)
 
@@ -261,6 +336,7 @@ summary_tbl <- tibble::tibble(
   site_name = site_name,
   diagnosis_source = diagnosis_source,
   n_all_icu_admissions = dplyr::n_distinct(all_icu$hospitalization_id),
+  n_ohca_admissions_before_pathway_timing_restriction = dplyr::n_distinct(ohca_unrestricted$hospitalization_id),
   n_ohca_admissions = dplyr::n_distinct(ohca$hospitalization_id),
   n_ohca_patients = dplyr::n_distinct(ohca$patient_id),
   n_with_home_county_fips = sum(!is.na(ohca$home_county_fips)),
@@ -279,6 +355,8 @@ daily_counts <- ohca |>
 arrow::write_parquet(ohca, sink = file.path(output_dir, "ohca_poa_icu_2018_2024.parquet"))
 readr::write_csv(ohca, file.path(output_dir, "ohca_poa_icu_2018_2024.csv"))
 readr::write_csv(summary_tbl, file.path(output_dir, "ohca_poa_icu_2018_2024_summary.csv"))
+readr::write_csv(cohort_restriction_summary, file.path(output_dir, "ohca_pathway_timing_restriction_summary.csv"))
+readr::write_csv(excluded_pathway_summary, file.path(output_dir, "ohca_pathway_timing_exclusions.csv"))
 readr::write_csv(daily_counts, file.path(output_dir, "ohca_daily_counts_2018_2024.csv"))
 
 print(summary_tbl)

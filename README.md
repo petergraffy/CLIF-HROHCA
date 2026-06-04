@@ -146,6 +146,18 @@ Core analytic outputs:
 - `SITE_dlnm_reduced_coefficients.csv`
 - `SITE_dlnm_reduced_vcov.csv`
 - `SITE_dlnm_time_sensitivity.csv`
+- `SITE_lag30_diagnostic_summary.csv`
+- `SITE_lag30_temperature_lag_rr_surface.csv`
+- `SITE_lag30_hot_temperature_lag_specific_rr.csv`
+- `SITE_lag30_hot_temperature_cumulative_rr_by_lag.csv`
+- `SITE_lag30_temperature_distribution.csv`
+- `SITE_case_crossover_dlnm_site_estimates.csv`
+- `SITE_case_crossover_dlnm_curves.csv`
+- `SITE_case_crossover_dlnm_lag_summaries.csv`
+- `SITE_case_crossover_dlnm_lag_specific_summaries.csv`
+- `SITE_case_crossover_dlnm_reduced_coefficients.csv`
+- `SITE_case_crossover_dlnm_reduced_vcov.csv`
+- `SITE_case_crossover_referent_set_summary.csv`
 - `SITE_table1.csv`
 - `SITE_outcomes.csv`
 - `SITE_cohort_flow.csv`
@@ -186,7 +198,7 @@ Visual QC figures:
 output/final/federated_exports/figures/SITE_figure_*.png
 ```
 
-These include site-level DLNM plots, trajectory plots, cumulative incidence plots, CRRT-window plots, renal/metabolic marker plots, and the cohort flow diagram.
+These include site-level DLNM plots, lag-30 diagnostic plots, trajectory plots, cumulative incidence plots, CRRT-window plots, renal/metabolic marker plots, and the cohort flow diagram.
 
 ## Troubleshooting
 

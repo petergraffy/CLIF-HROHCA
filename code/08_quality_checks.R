@@ -41,6 +41,7 @@ ADULT_AGE_YEARS <- 18
 WARM_MONTHS <- c(5L, 6L, 7L, 8L, 9L)
 
 ohca_path <- file.path(repo_root, "output", "intermediate", "cohorts", "ohca", "ohca_poa_icu_2018_2024.csv")
+restriction_summary_path <- file.path(repo_root, "output", "intermediate", "cohorts", "ohca", "ohca_pathway_timing_restriction_summary.csv")
 outcome_dataset_path <- file.path(repo_root, "output", "intermediate", "cohorts", "ohca_outcomes", "ohca_heat_adverse_outcome_analysis_dataset.csv")
 output_dir <- file.path(repo_root, "output", "final", "quality_checks")
 dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
@@ -119,6 +120,20 @@ ohca <- ohca |>
     hours_admission_to_icu = as.numeric(difftime(.data$first_icu_in, .data$admission_dttm, units = "hours"))
   )
 
+restriction_summary <- if (file.exists(restriction_summary_path)) {
+  readr::read_csv(restriction_summary_path, show_col_types = FALSE)
+} else {
+  tibble::tibble(step = character(), n = integer())
+}
+unrestricted_ohca_values <- restriction_summary |>
+  filter(.data$step == "OHCA present-on-admission ICU admissions") |>
+  pull(.data$n)
+unrestricted_ohca_n <- if (length(unrestricted_ohca_values) == 0L || is.na(unrestricted_ohca_values[[1]])) {
+  nrow(ohca)
+} else {
+  unrestricted_ohca_values[[1]]
+}
+
 hospitalization <- read_clif_table(
   tables_path,
   file_type,
@@ -178,13 +193,14 @@ county_assigned_ohca_n <- if ("county_fips" %in% names(ohca)) {
 }
 
 cohort_flow <- tibble::tibble(
-  step_order = seq_len(8),
+  step_order = seq_len(9),
   step = c(
     "All CLIF hospitalizations",
     "Adult hospitalizations (age >= 18 years)",
     "Adult hospitalizations admitted 2018-2024",
     "Adult 2018-2024 hospitalizations with ICU stay",
     "Present-on-admission cardiac arrest / OHCA-proxy ICU admissions",
+    "OHCA ICU admissions with allowed pathway and ICU entry <24 hours",
     "OHCA ICU admissions with assigned county exposure geography",
     "Warm-season OHCA ICU admissions (May-September)",
     "Complete cases for primary heat/outcome models"
@@ -194,6 +210,7 @@ cohort_flow <- tibble::tibble(
     nrow(adult_hospitalizations),
     nrow(study_period_adult_hospitalizations),
     nrow(study_period_adult_icu_hospitalizations),
+    unrestricted_ohca_n,
     nrow(ohca),
     county_assigned_ohca_n,
     warm_season_ohca_n,
@@ -205,6 +222,7 @@ cohort_flow <- tibble::tibble(
     "",
     "ICU identified from clif_adt location_category",
     "Present-on-admission cardiac arrest diagnosis plus ICU stay",
+    "Kept ED to ICU, ED to procedural to ICU, or direct ICU pathways only",
     "Patient county retained if local/adjacent; otherwise hospital county",
     "Primary heat-phenotype season",
     "Nonmissing primary exposure/covariate fields"

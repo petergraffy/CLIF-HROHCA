@@ -35,6 +35,11 @@ dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
 START_DATE <- as.Date("2018-01-01")
 END_DATE <- as.Date("2024-12-31")
 WARM_MONTHS <- c(5L, 6L, 7L, 8L, 9L)
+ANALYSIS_SEASON <- tolower(trimws(Sys.getenv("OHCA_DLNM_SEASON", unset = "all_year")))
+if (!ANALYSIS_SEASON %in% c("all_year", "warm")) {
+  stop("OHCA_DLNM_SEASON must be either 'all_year' or 'warm'.", call. = FALSE)
+}
+ANALYSIS_PERIOD_LABEL <- if (ANALYSIS_SEASON == "warm") "warm_season" else "all_year"
 MAX_LAG <- 5L
 TIME_DF_PER_YEAR <- 4L
 VAR_DF <- 4L
@@ -63,6 +68,12 @@ normalize_county_fips <- function(x) {
 finite_unique_n <- function(x) {
   x <- suppressWarnings(as.numeric(x))
   length(unique(x[is.finite(x)]))
+}
+
+filter_analysis_period <- function(df) {
+  keep <- !is.na(df$icu_patient_address_mean_tmax_c)
+  if (ANALYSIS_SEASON == "warm") keep <- keep & df$month %in% WARM_MONTHS
+  df[keep, , drop = FALSE]
 }
 
 choose_spline_term <- function(df, variable, spline_term, requested_df, linear_term = variable) {
@@ -557,7 +568,7 @@ model_df <- merge(daily_counts, daily_exposure, by = "admission_date", all.x = T
 model_df$year <- as.integer(format(model_df$admission_date, "%Y"))
 model_df$month <- as.integer(format(model_df$admission_date, "%m"))
 model_df$dow <- factor(weekdays(model_df$admission_date), levels = c("Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"))
-model_df <- model_df[model_df$month %in% WARM_MONTHS & !is.na(model_df$icu_patient_address_mean_tmax_c), , drop = FALSE]
+model_df <- filter_analysis_period(model_df)
 
 cohort <- read.csv(ohca_cohort_path, stringsAsFactors = FALSE)
 cohort$admission_date <- as.Date(cohort$admission_date)
@@ -611,7 +622,14 @@ reduced_vcov_rows[["overall_pollution"]] <- overall_pollution$reduced_vcov
 lag_summary_rows[["overall_pollution"]] <- overall_pollution$lag_summary
 lag_specific_rows[["overall_pollution"]] <- overall_pollution$lag_specific
 
-overall_mrt <- run_dlnm_spec(model_df, "Overall", model = "sensitivity_mrt_reference", reference = "mrt", return_curve = TRUE)
+overall_mrt <- run_dlnm_spec(
+  model_df,
+  "Overall",
+  model = "sensitivity_mrt_reference",
+  extra_terms = c("ns(icu_patient_address_mean_rmax_pct, df = RMAX_DF)", "icu_patient_address_mean_no2", "icu_patient_address_mean_pm25"),
+  reference = "mrt",
+  return_curve = TRUE
+)
 results[["overall_mrt"]] <- overall_mrt$result
 curve_rows[["overall_mrt"]] <- overall_mrt$curve
 reduced_coef_rows[["overall_mrt"]] <- overall_mrt$reduced_coef
@@ -647,7 +665,7 @@ for (nm in c("male","female","age_lt65","age_ge65","race_black","race_nonblack")
   merged$year <- as.integer(format(merged$admission_date, "%Y"))
   merged$month <- as.integer(format(merged$admission_date, "%m"))
   merged$dow <- factor(weekdays(merged$admission_date), levels = c("Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"))
-  merged <- merged[merged$month %in% WARM_MONTHS & !is.na(merged$icu_patient_address_mean_tmax_c), , drop = FALSE]
+  merged <- filter_analysis_period(merged)
   label <- unique(strata_counts[[nm]]$label)[1]
   stratified <- run_dlnm_spec(
     merged,
@@ -667,10 +685,30 @@ for (nm in c("male","female","age_lt65","age_ge65","race_black","race_nonblack")
   if (!is.null(stratified$lag_summary)) lag_summary_rows[[paste0(nm, "_primary")]] <- stratified$lag_summary
   if (!is.null(stratified$lag_specific)) lag_specific_rows[[paste0(nm, "_primary")]] <- stratified$lag_specific
 
+  stratified_pollution <- run_dlnm_spec(
+    merged,
+    label,
+    model = "stratified_humidity_pollution_adjusted",
+    extra_terms = c("ns(icu_patient_address_mean_rmax_pct, df = RMAX_DF)", "icu_patient_address_mean_no2", "icu_patient_address_mean_pm25"),
+    reference = "median",
+    return_curve = TRUE,
+    allow_skip = TRUE,
+    min_ohca = MIN_STRATUM_OHCA,
+    min_event_days = MIN_STRATUM_EVENT_DAYS,
+    fallback_linear = TRUE
+  )
+  results[[paste0(nm, "_pollution")]] <- stratified_pollution$result
+  if (!is.null(stratified_pollution$curve)) curve_rows[[paste0(nm, "_pollution")]] <- stratified_pollution$curve
+  if (!is.null(stratified_pollution$reduced_coef)) reduced_coef_rows[[paste0(nm, "_pollution")]] <- stratified_pollution$reduced_coef
+  if (!is.null(stratified_pollution$reduced_vcov)) reduced_vcov_rows[[paste0(nm, "_pollution")]] <- stratified_pollution$reduced_vcov
+  if (!is.null(stratified_pollution$lag_summary)) lag_summary_rows[[paste0(nm, "_pollution")]] <- stratified_pollution$lag_summary
+  if (!is.null(stratified_pollution$lag_specific)) lag_specific_rows[[paste0(nm, "_pollution")]] <- stratified_pollution$lag_specific
+
   stratified_mrt <- run_dlnm_spec(
     merged,
     label,
     model = "stratified_mrt_reference",
+    extra_terms = c("ns(icu_patient_address_mean_rmax_pct, df = RMAX_DF)", "icu_patient_address_mean_no2", "icu_patient_address_mean_pm25"),
     reference = "mrt",
     return_curve = TRUE,
     allow_skip = TRUE,
@@ -692,6 +730,13 @@ reduced_coef_df <- do.call(rbind, reduced_coef_rows)
 reduced_vcov_df <- do.call(rbind, reduced_vcov_rows)
 lag_summary_df <- do.call(rbind, lag_summary_rows)
 lag_specific_df <- do.call(rbind, lag_specific_rows)
+results_df$analysis_period <- ANALYSIS_PERIOD_LABEL
+curves_df$analysis_period <- ANALYSIS_PERIOD_LABEL
+reduced_coef_df$analysis_period <- ANALYSIS_PERIOD_LABEL
+reduced_vcov_df$analysis_period <- ANALYSIS_PERIOD_LABEL
+lag_summary_df$analysis_period <- ANALYSIS_PERIOD_LABEL
+lag_specific_df$analysis_period <- ANALYSIS_PERIOD_LABEL
+time_sensitivity_df$analysis_period <- ANALYSIS_PERIOD_LABEL
 write.csv(results_df, file.path(output_dir, "manuscript_dlnm_results.csv"), row.names = FALSE)
 write.csv(curves_df, file.path(output_dir, "manuscript_dlnm_curves.csv"), row.names = FALSE)
 write.csv(reduced_coef_df, file.path(output_dir, "manuscript_dlnm_reduced_coefficients.csv"), row.names = FALSE)
@@ -699,4 +744,4 @@ write.csv(reduced_vcov_df, file.path(output_dir, "manuscript_dlnm_reduced_vcov.c
 write.csv(lag_summary_df, file.path(output_dir, "manuscript_dlnm_lag_summaries.csv"), row.names = FALSE)
 write.csv(lag_specific_df, file.path(output_dir, "manuscript_dlnm_lag_specific_summaries.csv"), row.names = FALSE)
 write.csv(time_sensitivity_df, file.path(output_dir, "manuscript_dlnm_time_adjustment_sensitivity.csv"), row.names = FALSE)
-message("Wrote manuscript-style DLNM results to ", output_dir)
+message("Wrote manuscript-style ", ANALYSIS_PERIOD_LABEL, " DLNM results to ", output_dir)

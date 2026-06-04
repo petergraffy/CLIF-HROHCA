@@ -44,6 +44,18 @@ reduced_coef_path <- file.path(repo_root, "output", "final", "ohca_tmax", "manus
 reduced_vcov_path <- file.path(repo_root, "output", "final", "ohca_tmax", "manuscript", "manuscript_dlnm_reduced_vcov.csv")
 lag_summaries_path <- file.path(repo_root, "output", "final", "ohca_tmax", "manuscript", "manuscript_dlnm_lag_summaries.csv")
 lag_specific_summaries_path <- file.path(repo_root, "output", "final", "ohca_tmax", "manuscript", "manuscript_dlnm_lag_specific_summaries.csv")
+lag30_diagnostic_summary_path <- file.path(repo_root, "output", "final", "ohca_tmax", "lag_diagnostics", "lag30_diagnostic_summary.csv")
+lag30_surface_path <- file.path(repo_root, "output", "final", "ohca_tmax", "lag_diagnostics", "lag30_temperature_lag_rr_surface.csv")
+lag30_hot_lag_path <- file.path(repo_root, "output", "final", "ohca_tmax", "lag_diagnostics", "lag30_hot_temperature_lag_specific_rr.csv")
+lag30_hot_cumulative_path <- file.path(repo_root, "output", "final", "ohca_tmax", "lag_diagnostics", "lag30_hot_temperature_cumulative_rr_by_lag.csv")
+lag30_temperature_distribution_path <- file.path(repo_root, "output", "final", "ohca_tmax", "lag_diagnostics", "lag30_temperature_distribution_source.csv")
+case_crossover_results_path <- file.path(repo_root, "output", "final", "ohca_tmax", "case_crossover", "case_crossover_dlnm_results.csv")
+case_crossover_curves_path <- file.path(repo_root, "output", "final", "ohca_tmax", "case_crossover", "case_crossover_dlnm_curves.csv")
+case_crossover_reduced_coef_path <- file.path(repo_root, "output", "final", "ohca_tmax", "case_crossover", "case_crossover_dlnm_reduced_coefficients.csv")
+case_crossover_reduced_vcov_path <- file.path(repo_root, "output", "final", "ohca_tmax", "case_crossover", "case_crossover_dlnm_reduced_vcov.csv")
+case_crossover_lag_summaries_path <- file.path(repo_root, "output", "final", "ohca_tmax", "case_crossover", "case_crossover_dlnm_lag_summaries.csv")
+case_crossover_lag_specific_summaries_path <- file.path(repo_root, "output", "final", "ohca_tmax", "case_crossover", "case_crossover_dlnm_lag_specific_summaries.csv")
+case_crossover_referent_summary_path <- file.path(repo_root, "output", "final", "ohca_tmax", "case_crossover", "case_crossover_referent_set_summary.csv")
 table1_path <- file.path(repo_root, "output", "final", "descriptive", "table1_ohca_cohort_characteristics.csv")
 outcomes_path <- file.path(repo_root, "output", "final", "descriptive", "ohca_outcomes_summary.csv")
 heat_table2_path <- file.path(repo_root, "output", "final", "descriptive", "table2_heat_related_vs_non_heat_related_ohca.csv")
@@ -129,6 +141,38 @@ if (file.exists(lag_specific_summaries_path)) {
   lag_specific_summaries$site_name <- site_name
   lag_specific_summaries <- lag_specific_summaries[, c("site_name", setdiff(names(lag_specific_summaries), "site_name"))]
   write.csv(lag_specific_summaries, file.path(output_dir, paste0(site_name, "_dlnm_lag_specific_summaries.csv")), row.names = FALSE)
+}
+
+for (item in list(
+  list(path = lag30_diagnostic_summary_path, suffix = "lag30_diagnostic_summary"),
+  list(path = lag30_surface_path, suffix = "lag30_temperature_lag_rr_surface"),
+  list(path = lag30_hot_lag_path, suffix = "lag30_hot_temperature_lag_specific_rr"),
+  list(path = lag30_hot_cumulative_path, suffix = "lag30_hot_temperature_cumulative_rr_by_lag"),
+  list(path = lag30_temperature_distribution_path, suffix = "lag30_temperature_distribution")
+)) {
+  if (file.exists(item$path)) {
+    dat <- read.csv(item$path, stringsAsFactors = FALSE)
+    dat$site_name <- site_name
+    dat <- dat[, c("site_name", setdiff(names(dat), "site_name"))]
+    write.csv(dat, file.path(output_dir, paste0(site_name, "_", item$suffix, ".csv")), row.names = FALSE)
+  }
+}
+
+for (item in list(
+  list(path = case_crossover_results_path, suffix = "case_crossover_dlnm_site_estimates"),
+  list(path = case_crossover_curves_path, suffix = "case_crossover_dlnm_curves"),
+  list(path = case_crossover_reduced_coef_path, suffix = "case_crossover_dlnm_reduced_coefficients"),
+  list(path = case_crossover_reduced_vcov_path, suffix = "case_crossover_dlnm_reduced_vcov"),
+  list(path = case_crossover_lag_summaries_path, suffix = "case_crossover_dlnm_lag_summaries"),
+  list(path = case_crossover_lag_specific_summaries_path, suffix = "case_crossover_dlnm_lag_specific_summaries"),
+  list(path = case_crossover_referent_summary_path, suffix = "case_crossover_referent_set_summary")
+)) {
+  if (file.exists(item$path)) {
+    dat <- read.csv(item$path, stringsAsFactors = FALSE)
+    dat$site_name <- site_name
+    dat <- dat[, c("site_name", setdiff(names(dat), "site_name"))]
+    write.csv(dat, file.path(output_dir, paste0(site_name, "_", item$suffix, ".csv")), row.names = FALSE)
+  }
 }
 
 if (file.exists(table1_path)) {

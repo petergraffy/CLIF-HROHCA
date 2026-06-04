@@ -25,6 +25,8 @@ scripts <- c(
   "02_build_icu_exposure_series.R",
   "03_descriptive_tables.R",
   "04_dlnm_primary_and_sensitivity.R",
+  "04c_lag30_diagnostic_plots.R",
+  "04b_case_crossover_dlnm.R",
   "05_heat_related_vs_non_heat_related_table.R",
   "09_supplementary_ohca_outcome_models.R",
   "08_quality_checks.R",

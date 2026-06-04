@@ -7,6 +7,7 @@ required_packages <- c(
   "lubridate",
   "readr",
   "stringr",
+  "survival",
   "tibble",
   "tidyr",
   "tsModel"
