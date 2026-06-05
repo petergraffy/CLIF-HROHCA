@@ -71,6 +71,14 @@ clean_assessment_text <- function(x) {
   stringr::str_to_lower(stringr::str_squish(tidyr::replace_na(as.character(x), "")))
 }
 
+ensure_columns <- function(df, columns) {
+  if (is.null(df)) df <- tibble::tibble()
+  for (column in columns) {
+    if (!column %in% names(df)) df[[column]] <- NA
+  }
+  df
+}
+
 choose_terms <- function(df, terms) {
   keep <- character()
   omitted <- character()
@@ -447,7 +455,10 @@ respiratory <- read_clif_table(
 )
 if (is.null(respiratory) || nrow(respiratory) == 0) {
   resp_events <- tibble::tibble(hospitalization_id = cohort_ids)
+} else if (!all(c("hospitalization_id", "recorded_dttm") %in% names(respiratory))) {
+  resp_events <- tibble::tibble(hospitalization_id = cohort_ids)
 } else {
+  respiratory <- ensure_columns(respiratory, c("device_category", "artificial_airway", "tracheostomy"))
   resp_long <- respiratory |>
     transmute(
       hospitalization_id = as.character(.data$hospitalization_id),
@@ -508,7 +519,10 @@ assessments <- read_clif_table(
 )
 if (is.null(assessments) || nrow(assessments) == 0) {
   awake_events <- tibble::tibble(hospitalization_id = cohort_ids)
+} else if (!all(c("hospitalization_id", "recorded_dttm", "assessment_category") %in% names(assessments))) {
+  awake_events <- tibble::tibble(hospitalization_id = cohort_ids)
 } else {
+  assessments <- ensure_columns(assessments, c("numerical_value", "categorical_value", "text_value"))
   awake_events <- assessments |>
     transmute(
       hospitalization_id = as.character(.data$hospitalization_id),

@@ -119,6 +119,14 @@ safe_chr <- function(x) {
   stringr::str_squish(x)
 }
 
+ensure_columns <- function(df, columns) {
+  if (is.null(df)) df <- tibble::tibble()
+  for (column in columns) {
+    if (!column %in% names(df)) df[[column]] <- NA
+  }
+  df
+}
+
 fmt_n_pct <- function(n, denom) {
   if (is.na(denom) || denom <= 0) return(NA_character_)
   sprintf("%s (%.1f%%)", format(as.integer(n), big.mark = ","), 100 * n / denom)
@@ -267,6 +275,8 @@ calculate_sofa_windows <- function(cohort_df, vitals_df, labs_df, support_df, me
   if (is.null(support_df) || nrow(support_df) == 0) support_df <- tibble::tibble()
   if (is.null(med_admin_df) || nrow(med_admin_df) == 0) med_admin_df <- tibble::tibble()
   if (is.null(scores_df) || nrow(scores_df) == 0) scores_df <- tibble::tibble()
+  support_df <- ensure_columns(support_df, c("device_category", "fio2_set"))
+  med_admin_df <- ensure_columns(med_admin_df, c("med_dose", "med_dose_unit"))
 
   vitals_min <- if (all(c("hospitalization_id", "recorded_dttm", "vital_category", "vital_value") %in% names(vitals_df))) {
     vitals_df |>
@@ -1223,7 +1233,10 @@ neuro_dx <- diagnosis |>
 respiratory <- read_clif_table(tables_path, file_type, "respiratory_support", required = FALSE)
 if (is.null(respiratory) || nrow(respiratory) == 0) {
   resp_summary <- tibble::tibble(hospitalization_id = cohort_ids)
+} else if (!all(c("hospitalization_id", "recorded_dttm") %in% names(respiratory))) {
+  resp_summary <- tibble::tibble(hospitalization_id = cohort_ids)
 } else {
+  respiratory <- ensure_columns(respiratory, c("device_category", "artificial_airway", "tracheostomy"))
   resp_summary <- respiratory |>
     transmute(
       hospitalization_id = as.character(.data$hospitalization_id),
@@ -1271,7 +1284,21 @@ if (is.null(assessments) || nrow(assessments) == 0) {
     sbt_pass_0_72h = FALSE
   )
   gcs_landmark_patient <- tibble::tibble(hospitalization_id = character(), gcs_landmark_hour = integer(), gcs_total_landmark = numeric())
+} else if (!all(c("hospitalization_id", "recorded_dttm", "assessment_category") %in% names(assessments))) {
+  neuro_summary <- tibble::tibble(
+    hospitalization_id = cohort_ids,
+    n_neuro_assessments_0_72h = 0L,
+    awake_gcs_total_ge13_24_72h = FALSE,
+    awake_gcs_motor_6_24_72h = FALSE,
+    awake_rass_ge_minus1_24_72h = FALSE,
+    any_avpu_alert_0_72h = FALSE,
+    any_avpu_unresponsive_0_72h = FALSE,
+    sat_pass_0_72h = FALSE,
+    sbt_pass_0_72h = FALSE
+  )
+  gcs_landmark_patient <- tibble::tibble(hospitalization_id = character(), gcs_landmark_hour = integer(), gcs_total_landmark = numeric())
 } else {
+  assessments <- ensure_columns(assessments, c("numerical_value", "categorical_value", "text_value"))
   assessment_long <- assessments |>
     transmute(
       hospitalization_id = as.character(.data$hospitalization_id),
