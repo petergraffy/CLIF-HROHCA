@@ -197,6 +197,47 @@ extract_crr_terms <- function(fit, model, exposure_label, exposure_regex, n, eve
   )
 }
 
+extract_crr_coefficients <- function(fit, model, n, events, competing, covariates, omitted_terms) {
+  if (inherits(fit, "error") || is.null(fit$coef) || is.null(fit$var)) return(tibble::tibble())
+  coefs <- fit$coef
+  vc <- fit$var
+  se <- sqrt(diag(vc))
+  tibble::tibble(
+    model = model,
+    n = n,
+    events_awake_extubated = events,
+    competing_deaths = competing,
+    coefficient = names(coefs),
+    estimate = as.numeric(coefs),
+    standard_error = as.numeric(se),
+    subdistribution_hr = exp(as.numeric(coefs)),
+    ci_low = exp(as.numeric(coefs) - 1.96 * as.numeric(se)),
+    ci_high = exp(as.numeric(coefs) + 1.96 * as.numeric(se)),
+    p_value = 2 * stats::pnorm(abs(as.numeric(coefs) / as.numeric(se)), lower.tail = FALSE),
+    covariates = paste(covariates, collapse = " + "),
+    omitted_terms = paste(omitted_terms, collapse = "; ")
+  )
+}
+
+extract_crr_vcov <- function(fit, model, n, events, competing, covariates, omitted_terms) {
+  if (inherits(fit, "error") || is.null(fit$coef) || is.null(fit$var)) return(tibble::tibble())
+  vc <- fit$var
+  if (is.null(rownames(vc))) rownames(vc) <- names(fit$coef)
+  if (is.null(colnames(vc))) colnames(vc) <- names(fit$coef)
+  as.data.frame(as.table(vc), stringsAsFactors = FALSE) |>
+    transmute(
+      model = model,
+      n = n,
+      events_awake_extubated = events,
+      competing_deaths = competing,
+      coefficient_row = as.character(.data$Var1),
+      coefficient_col = as.character(.data$Var2),
+      covariance = as.numeric(.data$Freq),
+      covariates = paste(covariates, collapse = " + "),
+      omitted_terms = paste(omitted_terms, collapse = "; ")
+    )
+}
+
 run_fine_gray <- function(df, exposure_terms, model, exposure_label, exposure_regex, adjust_terms = character()) {
   base <- df |>
     filter(!is.na(.data$fg_time_days), is.finite(.data$fg_time_days), .data$fg_time_days > 0, !is.na(.data$fg_status))
@@ -207,10 +248,14 @@ run_fine_gray <- function(df, exposure_terms, model, exposure_label, exposure_re
   adjust_keep <- setdiff(term_info$keep, exposure_keep)
 
   if (nrow(base) < 50 || events < 5 || competing < 5 || length(exposure_keep) == 0) {
-    return(extract_crr_terms(
-      NULL, model, exposure_label, exposure_regex, nrow(base), events, competing,
-      c(exposure_keep, adjust_keep), term_info$omitted, FALSE,
-      "Insufficient sample size, awake/extubated events, competing deaths, or exposure variation"
+    return(list(
+      summary = extract_crr_terms(
+        NULL, model, exposure_label, exposure_regex, nrow(base), events, competing,
+        c(exposure_keep, adjust_keep), term_info$omitted, FALSE,
+        "Insufficient sample size, awake/extubated events, competing deaths, or exposure variation"
+      ),
+      coefficients = tibble::tibble(),
+      vcov = tibble::tibble()
     ))
   }
 
@@ -223,10 +268,14 @@ run_fine_gray <- function(df, exposure_terms, model, exposure_label, exposure_re
   cov_matrix <- matrix_info$matrix
   matrix_dropped <- matrix_info$dropped
   if (is.null(cov_matrix) || ncol(cov_matrix) == 0 || !any(stringr::str_detect(colnames(cov_matrix), exposure_regex))) {
-    return(extract_crr_terms(
-      NULL, model, exposure_label, exposure_regex, nrow(model_df), events, competing,
-      c(exposure_keep, adjust_keep), c(term_info$omitted, matrix_dropped), FALSE,
-      "Exposure terms were removed from the Fine-Gray design matrix"
+    return(list(
+      summary = extract_crr_terms(
+        NULL, model, exposure_label, exposure_regex, nrow(model_df), events, competing,
+        c(exposure_keep, adjust_keep), c(term_info$omitted, matrix_dropped), FALSE,
+        "Exposure terms were removed from the Fine-Gray design matrix"
+      ),
+      coefficients = tibble::tibble(),
+      vcov = tibble::tibble()
     ))
   }
   fit <- tryCatch(
@@ -267,9 +316,19 @@ run_fine_gray <- function(df, exposure_terms, model, exposure_label, exposure_re
     }
   }
 
-  extract_crr_terms(
-    fit, model, exposure_label, exposure_regex, nrow(model_df), events, competing,
-    c(exposure_keep, adjust_keep), c(term_info$omitted, matrix_dropped)
+  all_covariates <- c(exposure_keep, adjust_keep)
+  all_omitted <- c(term_info$omitted, matrix_dropped)
+  list(
+    summary = extract_crr_terms(
+      fit, model, exposure_label, exposure_regex, nrow(model_df), events, competing,
+      all_covariates, all_omitted
+    ),
+    coefficients = extract_crr_coefficients(
+      fit, model, nrow(model_df), events, competing, all_covariates, all_omitted
+    ),
+    vcov = extract_crr_vcov(
+      fit, model, nrow(model_df), events, competing, all_covariates, all_omitted
+    )
   )
 }
 
@@ -568,7 +627,7 @@ analysis <- analysis |>
     rmax_spline_3 = splines::ns(.data$rmax_mean_pct, df = 3)[, 3]
   )
 
-models <- dplyr::bind_rows(
+fine_gray_results <- list(
   run_fine_gray(
     analysis,
     c("tmax_spline_1", "tmax_spline_2", "tmax_spline_3", "rmax_spline_1", "rmax_spline_2", "rmax_spline_3"),
@@ -585,7 +644,13 @@ models <- dplyr::bind_rows(
     "^tmax_spline_|^rmax_spline_",
     mechanism_adjust
   )
-) |>
+)
+
+models <- purrr::map_dfr(fine_gray_results, "summary") |>
+  mutate(site_name = site_name, .before = 1)
+model_coefficients <- purrr::map_dfr(fine_gray_results, "coefficients") |>
+  mutate(site_name = site_name, .before = 1)
+model_vcov <- purrr::map_dfr(fine_gray_results, "vcov") |>
   mutate(site_name = site_name, .before = 1)
 
 patient_audit <- analysis |>
@@ -604,6 +669,8 @@ readr::write_csv(summary_tbl, file.path(OUTPUT_DIR, "ohca_icu_competing_risk_awa
 readr::write_csv(death_source_summary, file.path(OUTPUT_DIR, "ohca_icu_competing_risk_death_source_summary.csv"))
 readr::write_csv(mechanism_summary, file.path(OUTPUT_DIR, "ohca_icu_competing_risk_awake_extubated_72h_ohca_mechanism_summary.csv"))
 readr::write_csv(models, file.path(OUTPUT_DIR, "ohca_icu_competing_risk_awake_extubated_72h_fine_gray_models.csv"))
+readr::write_csv(model_coefficients, file.path(OUTPUT_DIR, "ohca_icu_competing_risk_awake_extubated_72h_coefficients.csv"))
+readr::write_csv(model_vcov, file.path(OUTPUT_DIR, "ohca_icu_competing_risk_awake_extubated_72h_vcov.csv"))
 readr::write_csv(patient_audit, file.path(OUTPUT_DIR, "ohca_icu_competing_risk_awake_extubated_72h_patient_audit.csv"))
 
 print(summary_tbl)

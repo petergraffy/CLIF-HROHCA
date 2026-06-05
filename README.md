@@ -171,11 +171,18 @@ Core analytic outputs:
 - `SITE_ohca_icu_72h_phenotype_definitions.csv`
 - `SITE_ohca_icu_72h_phenotype_assignment_model.csv`
 - `SITE_ohca_icu_72h_phenotype_assignment_temperature_curve.csv`
+- `SITE_ohca_icu_72h_phenotype_assignment_coefficients.csv`
+- `SITE_ohca_icu_72h_phenotype_assignment_vcov.csv`
 - `SITE_ohca_icu_72h_phenotype_assignment_model_mechanism_adjusted.csv`
 - `SITE_ohca_icu_72h_phenotype_assignment_temperature_curve_mechanism_adjusted.csv`
+- `SITE_ohca_icu_72h_phenotype_assignment_coefficients_mechanism_adjusted.csv`
+- `SITE_ohca_icu_72h_phenotype_assignment_vcov_mechanism_adjusted.csv`
 - `SITE_ohca_icu_competing_risk_awake_extubated_72h_summary.csv`
 - `SITE_ohca_icu_competing_risk_death_source_summary.csv`
 - `SITE_ohca_icu_competing_risk_awake_extubated_72h_ohca_mechanism_summary.csv`
+- `SITE_ohca_icu_competing_risk_awake_extubated_72h_fine_gray_models.csv`
+- `SITE_ohca_icu_competing_risk_awake_extubated_72h_coefficients.csv`
+- `SITE_ohca_icu_competing_risk_awake_extubated_72h_vcov.csv`
 - `SITE_ohca_icu_competing_risk_awake_extubated_72h_fine_gray_models.csv`
 
 Visual QC figures:

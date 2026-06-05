@@ -657,7 +657,7 @@ run_phenotype_assignment_model <- function(df, label, adjust_terms = character()
   )
   if (!requireNamespace("nnet", quietly = TRUE)) {
     empty_summary$skip_reason <- "Package nnet unavailable"
-    return(list(summary = empty_summary, curve = tibble::tibble()))
+    return(list(summary = empty_summary, curve = tibble::tibble(), coefficients = tibble::tibble(), vcov = tibble::tibble()))
   }
   if (
     nrow(base) < 50 ||
@@ -666,7 +666,7 @@ run_phenotype_assignment_model <- function(df, label, adjust_terms = character()
       length(unique(base$tmax_mean_c)) < 5 ||
       length(unique(base$rmax_mean_pct)) < 5
   ) {
-    return(list(summary = empty_summary, curve = tibble::tibble()))
+    return(list(summary = empty_summary, curve = tibble::tibble(), coefficients = tibble::tibble(), vcov = tibble::tibble()))
   }
 
   term_info <- choose_terms(base, adjust_terms)
@@ -695,7 +695,7 @@ run_phenotype_assignment_model <- function(df, label, adjust_terms = character()
     )
     empty_summary$skip_reason <- reason
     empty_summary$omitted_terms <- paste(term_info$omitted, collapse = "; ")
-    return(list(summary = empty_summary, curve = tibble::tibble()))
+    return(list(summary = empty_summary, curve = tibble::tibble(), coefficients = tibble::tibble(), vcov = tibble::tibble()))
   }
 
   lrt_p <- function(reduced, full) {
@@ -754,7 +754,78 @@ run_phenotype_assignment_model <- function(df, label, adjust_terms = character()
     estimable = TRUE,
     skip_reason = NA_character_
   )
-  list(summary = summary, curve = curve)
+
+  coef_mat <- stats::coef(full_fit)
+  if (is.null(dim(coef_mat))) {
+    coef_mat <- matrix(coef_mat, nrow = 1, dimnames = list(names(coef_mat)[[1]], names(coef_mat)))
+  }
+  coefficients <- as.data.frame(coef_mat, stringsAsFactors = FALSE) |>
+    tibble::rownames_to_column("outcome_level") |>
+    tidyr::pivot_longer(
+      cols = -dplyr::all_of("outcome_level"),
+      names_to = "coefficient",
+      values_to = "estimate"
+    ) |>
+    mutate(
+      model = label,
+      reference_level = "regained_consciousness_extubated",
+      n = nrow(stats::model.frame(full_fit)),
+      spline_df = spline_df,
+      covariates = paste(c(temp_term, humidity_term, term_info$keep), collapse = " + "),
+      omitted_terms = paste(term_info$omitted, collapse = "; "),
+      .before = 1
+    )
+
+  vc <- tryCatch(stats::vcov(full_fit), error = function(e) NULL)
+  vcov_tbl <- tibble::tibble()
+  if (!is.null(vc) && length(vc) > 0) {
+    parse_multinom_vcov_name <- function(x) {
+      pieces <- strsplit(x, ":", fixed = TRUE)[[1]]
+      if (length(pieces) < 2) {
+        tibble::tibble(outcome_level = NA_character_, coefficient = x)
+      } else {
+        tibble::tibble(
+          outcome_level = pieces[[1]],
+          coefficient = paste(pieces[-1], collapse = ":")
+        )
+      }
+    }
+    vc_names <- colnames(vc)
+    if (is.null(vc_names)) {
+      vc_names <- as.vector(outer(rownames(coef_mat), colnames(coef_mat), paste, sep = ":"))
+      colnames(vc) <- vc_names
+      rownames(vc) <- vc_names
+    }
+    row_info <- purrr::map_dfr(rownames(vc), parse_multinom_vcov_name) |>
+      rename(outcome_level_row = "outcome_level", coefficient_row = "coefficient") |>
+      mutate(row_name = rownames(vc), .before = 1)
+    col_info <- purrr::map_dfr(colnames(vc), parse_multinom_vcov_name) |>
+      rename(outcome_level_col = "outcome_level", coefficient_col = "coefficient") |>
+      mutate(col_name = colnames(vc), .before = 1)
+    vcov_tbl <- as.data.frame(as.table(vc), stringsAsFactors = FALSE) |>
+      transmute(
+        row_name = as.character(.data$Var1),
+        col_name = as.character(.data$Var2),
+        covariance = as.numeric(.data$Freq)
+      ) |>
+      left_join(row_info, by = "row_name") |>
+      left_join(col_info, by = "col_name") |>
+      transmute(
+        model = label,
+        reference_level = "regained_consciousness_extubated",
+        n = nrow(stats::model.frame(full_fit)),
+        spline_df = spline_df,
+        outcome_level_row,
+        coefficient_row,
+        outcome_level_col,
+        coefficient_col,
+        covariance,
+        covariates = paste(c(temp_term, humidity_term, term_info$keep), collapse = " + "),
+        omitted_terms = paste(term_info$omitted, collapse = "; ")
+      )
+  }
+
+  list(summary = summary, curve = curve, coefficients = coefficients, vcov = vcov_tbl)
 }
 
 ohca <- readr::read_csv(OHCA_PATH, show_col_types = FALSE) |>
@@ -1038,6 +1109,10 @@ phenotype_assignment_model <- phenotype_assignment_primary$summary |>
   mutate(site_name = site_name, .before = 1)
 phenotype_assignment_curve <- phenotype_assignment_primary$curve |>
   mutate(site_name = site_name, .before = 1)
+phenotype_assignment_coefficients <- phenotype_assignment_primary$coefficients |>
+  mutate(site_name = site_name, .before = 1)
+phenotype_assignment_vcov <- phenotype_assignment_primary$vcov |>
+  mutate(site_name = site_name, .before = 1)
 
 phenotype_assignment_mechanism <- run_phenotype_assignment_model(
   phenotype_cohort,
@@ -1047,6 +1122,10 @@ phenotype_assignment_mechanism <- run_phenotype_assignment_model(
 phenotype_assignment_model_mechanism <- phenotype_assignment_mechanism$summary |>
   mutate(site_name = site_name, .before = 1)
 phenotype_assignment_curve_mechanism <- phenotype_assignment_mechanism$curve |>
+  mutate(site_name = site_name, .before = 1)
+phenotype_assignment_coefficients_mechanism <- phenotype_assignment_mechanism$coefficients |>
+  mutate(site_name = site_name, .before = 1)
+phenotype_assignment_vcov_mechanism <- phenotype_assignment_mechanism$vcov |>
   mutate(site_name = site_name, .before = 1)
 
 phenotype_definitions <- tibble::tibble(
@@ -1174,8 +1253,12 @@ readr::write_csv(mechanism_summary, file.path(OUTPUT_DIR, "ohca_icu_72h_ohca_mec
 readr::write_csv(evidence_summary, file.path(OUTPUT_DIR, "ohca_icu_72h_phenotype_evidence_summary.csv"))
 readr::write_csv(phenotype_assignment_model, file.path(OUTPUT_DIR, "ohca_icu_72h_phenotype_assignment_model.csv"))
 readr::write_csv(phenotype_assignment_curve, file.path(OUTPUT_DIR, "ohca_icu_72h_phenotype_assignment_temperature_curve.csv"))
+readr::write_csv(phenotype_assignment_coefficients, file.path(OUTPUT_DIR, "ohca_icu_72h_phenotype_assignment_coefficients.csv"))
+readr::write_csv(phenotype_assignment_vcov, file.path(OUTPUT_DIR, "ohca_icu_72h_phenotype_assignment_vcov.csv"))
 readr::write_csv(phenotype_assignment_model_mechanism, file.path(OUTPUT_DIR, "ohca_icu_72h_phenotype_assignment_model_mechanism_adjusted.csv"))
 readr::write_csv(phenotype_assignment_curve_mechanism, file.path(OUTPUT_DIR, "ohca_icu_72h_phenotype_assignment_temperature_curve_mechanism_adjusted.csv"))
+readr::write_csv(phenotype_assignment_coefficients_mechanism, file.path(OUTPUT_DIR, "ohca_icu_72h_phenotype_assignment_coefficients_mechanism_adjusted.csv"))
+readr::write_csv(phenotype_assignment_vcov_mechanism, file.path(OUTPUT_DIR, "ohca_icu_72h_phenotype_assignment_vcov_mechanism_adjusted.csv"))
 readr::write_csv(phenotype_definitions, file.path(OUTPUT_DIR, "ohca_icu_72h_phenotype_definitions.csv"))
 
 plot_df <- phenotype_summary |>
