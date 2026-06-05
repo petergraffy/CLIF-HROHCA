@@ -18,7 +18,7 @@ get_script_path <- function() {
 }
 
 repo_root <- normalizePath(
-  file.path(dirname(get_script_path()), ".."),
+  file.path(dirname(get_script_path()), "..", ".."),
   winslash = "/",
   mustWork = TRUE
 )

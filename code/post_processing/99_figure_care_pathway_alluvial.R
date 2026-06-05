@@ -13,7 +13,7 @@ get_script_path <- function() {
   normalizePath(sub(file_arg, "", match[[1]]), winslash = "/", mustWork = TRUE)
 }
 
-repo_root <- normalizePath(file.path(dirname(get_script_path()), ".."), winslash = "/", mustWork = TRUE)
+repo_root <- normalizePath(file.path(dirname(get_script_path()), "..", ".."), winslash = "/", mustWork = TRUE)
 source(file.path(repo_root, "code", "00_project_functions.R"))
 ensure_user_library(repo_root)
 input_dir <- file.path(repo_root, "output", "final", "federated_pooled")
@@ -39,7 +39,7 @@ timing_path <- file.path(input_dir, "pooled_icu_timing_bins.csv")
 timing_summary_path <- file.path(input_dir, "pooled_icu_timing_summary.csv")
 
 if (!file.exists(pathway_path) || !file.exists(timing_path)) {
-  stop("Run code/98_pool_care_pathways.R before building the alluvial figure.")
+  stop("Run code/post_processing/98_pool_care_pathways.R before building the alluvial figure.")
 }
 
 pathways <- readr::read_csv(pathway_path, show_col_types = FALSE) |>

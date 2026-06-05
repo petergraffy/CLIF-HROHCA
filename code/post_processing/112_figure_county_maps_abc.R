@@ -13,7 +13,8 @@ get_script_path <- function() {
   normalizePath(sub(file_arg, "", match[[1]]), winslash = "/", mustWork = TRUE)
 }
 
-repo_root <- normalizePath(file.path(dirname(get_script_path()), ".."), winslash = "/", mustWork = TRUE)
+repo_root <- normalizePath(file.path(dirname(get_script_path()), "..", ".."), winslash = "/", mustWork = TRUE)
+weather_dir <- file.path(repo_root, "output", "final", "county_weather_maps")
 output_dir <- file.path(repo_root, "output", "final", "manuscript_figures")
 table_dir <- file.path(repo_root, "output", "final", "manuscript_tables")
 dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
@@ -22,6 +23,7 @@ dir.create(table_dir, recursive = TRUE, showWarnings = FALSE)
 suppressPackageStartupMessages({
   library(dplyr)
   library(ggplot2)
+  library(patchwork)
   library(readr)
   library(ragg)
   library(sf)
@@ -29,11 +31,23 @@ suppressPackageStartupMessages({
   library(svglite)
   library(tidyr)
   library(tigris)
+  library(viridis)
 })
 
 options(tigris_use_cache = TRUE)
 
 conus_excluded_state_fips <- c("02", "15", "60", "66", "69", "72", "78")
+
+county_weather_path <- file.path(weather_dir, "county_mean_tmax_humidity_2018_2024.csv")
+if (!file.exists(county_weather_path)) {
+  stop("Missing county weather summary: ", county_weather_path, ". Run code/post_processing/92_map_county_mean_weather.R first.")
+}
+
+county_weather <- readr::read_csv(county_weather_path, show_col_types = FALSE) |>
+  mutate(
+    geoid = sprintf("%05s", as.character(.data$geoid)),
+    state_fips = sprintf("%02s", as.character(.data$state_fips))
+  )
 
 hospital_geo <- readr::read_csv(
   file.path(repo_root, "reference", "clif_hospital_geography.csv"),
@@ -59,7 +73,7 @@ hospital_counties <- hospital_geo |>
 
 adjacent_counties <- hospital_geo |>
   select("site_name", "hospital_id_name", "hospital_full_name", "adjacent_county_fips") |>
-  separate_rows(.data$adjacent_county_fips, sep = "[|]") |>
+  separate_rows("adjacent_county_fips", sep = "[|]") |>
   mutate(adjacent_county_fips = str_squish(.data$adjacent_county_fips)) |>
   filter(.data$adjacent_county_fips != "") |>
   transmute(
@@ -98,6 +112,7 @@ county_shapes <- tigris::counties(cb = TRUE, year = 2023, class = "sf") |>
   st_transform(5070)
 
 map_data <- county_shapes |>
+  left_join(county_weather, by = c("geoid", "state_fips")) |>
   left_join(county_attribution, by = "geoid") |>
   mutate(
     map_group = replace_na(.data$map_group, "Not attributed"),
@@ -132,50 +147,40 @@ site_palette <- c(
   "OHSU" = "#007C89",
   "Penn" = "#011F5B",
   "RUMC" = "#00A3E0",
-  "UCMC" = "#800000",
+  "UCMC" = "#F97316",
   "UCSF" = "#052049",
   "UMN" = "#7A0019",
   "Multiple sites" = "#111827",
   "Not attributed" = "#E5E7EB"
 )
 
-readr::write_csv(
-  county_attribution_long,
-  file.path(output_dir, "figure_site_attributed_counties_long_source.csv")
-)
-readr::write_csv(
-  county_attribution |>
-    arrange(desc(.data$n_sites), desc(.data$n_hospitals), .data$geoid),
-  file.path(output_dir, "figure_site_attributed_counties_source.csv")
+legend_fill_levels <- factor(
+  names(site_palette)[names(site_palette) != "Not attributed"],
+  levels = levels(map_data$map_group)
 )
 
-summary_table <- county_attribution |>
-  summarise(
-    attributed_counties = n(),
-    counties_with_multiple_sites = sum(.data$n_sites > 1),
-    counties_with_multiple_hospitals = sum(.data$n_hospitals > 1),
-    hospital_counties = sum(.data$has_hospital_county),
-    adjacent_only_counties = sum(!.data$has_hospital_county),
-    .groups = "drop"
+legend_seed <- st_sf(
+  map_group = legend_fill_levels,
+  geometry = st_sfc(
+    rep(list(st_geometry(map_data)[[1]]), length(legend_fill_levels)),
+    crs = st_crs(map_data)
   )
-readr::write_csv(summary_table, file.path(table_dir, "supplement_table_site_attributed_county_map_summary.csv"))
+)
 
-theme_map <- function() {
-  theme_void(base_size = 13) +
+theme_map <- function(base_size = 16) {
+  theme_void(base_size = base_size) +
     theme(
-      plot.title = element_text(face = "bold", size = 18, hjust = 0, color = "#111827"),
-      plot.subtitle = element_text(size = 11, hjust = 0, color = "#374151", margin = margin(b = 8)),
-      plot.caption = element_text(size = 8.5, hjust = 0, color = "#4B5563", margin = margin(t = 8)),
+      plot.title = element_text(face = "bold", size = 22, hjust = 0, color = "#111827", margin = margin(b = 6)),
       legend.position = "right",
-      legend.title = element_text(face = "bold", size = 11, color = "#111827"),
-      legend.text = element_text(size = 10, color = "#111827"),
-      legend.key.height = grid::unit(0.38, "cm"),
-      legend.key.width = grid::unit(0.38, "cm"),
-      plot.margin = margin(12, 18, 12, 18)
+      legend.title = element_text(face = "bold", size = 16, color = "#111827"),
+      legend.text = element_text(size = 15, color = "#111827"),
+      legend.key.height = grid::unit(0.48, "cm"),
+      legend.key.width = grid::unit(0.48, "cm"),
+      plot.margin = margin(8, 14, 8, 14)
     )
 }
 
-county_map <- ggplot() +
+attribution_plot <- ggplot() +
   geom_sf(
     data = filter(map_data, .data$map_group == "Not attributed"),
     aes(fill = .data$map_group),
@@ -190,27 +195,63 @@ county_map <- ggplot() +
   geom_sf(
     data = hospital_county_points,
     shape = 21,
-    size = 1.7,
+    size = 2.2,
     fill = "white",
     color = "#111827",
-    linewidth = 0.35,
-    alpha = 0.92
+    linewidth = 0.45,
+    alpha = 0.95
+  ) +
+  geom_sf(
+    data = legend_seed,
+    aes(fill = .data$map_group),
+    color = NA,
+    alpha = 0,
+    show.legend = TRUE
   ) +
   scale_fill_manual(
     values = site_palette,
     name = "County attribution",
+    limits = names(site_palette),
     drop = FALSE,
-    breaks = names(site_palette)[names(site_palette) != "Not attributed"]
+    breaks = names(site_palette)[names(site_palette) != "Not attributed"],
+    guide = guide_legend(override.aes = list(alpha = 1, color = NA))
   ) +
   coord_sf(datum = NA) +
-  labs(
-    title = "CLIF Heat-Related OHCA County Attribution",
-    subtitle = "Hospital counties and adjacent counties attributed to each contributing site; black indicates counties attributed to multiple sites.",
-    caption = "County attribution uses reference/clif_hospital_geography.csv. Points mark hospital counties. Projection: NAD83 / Conus Albers (EPSG:5070). Alaska, Hawaii, and territories excluded."
-  ) +
+  labs(title = "A. CLIF county catchment (2018-2024)") +
   theme_map()
 
-save_plot <- function(plot, basename, width = 12, height = 7.6) {
+make_weather_plot <- function(fill_col, title, legend_title, palette) {
+  ggplot(map_data) +
+    geom_sf(aes(fill = .data[[fill_col]]), color = NA) +
+    scale_fill_viridis_c(
+      option = palette,
+      name = legend_title,
+      na.value = "#E5E7EB",
+      guide = guide_colorbar(barheight = grid::unit(3.6, "in"), barwidth = grid::unit(0.24, "in"))
+    ) +
+    coord_sf(datum = NA) +
+    labs(title = title) +
+    theme_map()
+}
+
+tmax_plot <- make_weather_plot(
+  "mean_tmax_c",
+  "B. Mean daily maximum temperature by county (Daymet, 2018-2024)",
+  "Mean Tmax (°C)",
+  "magma"
+)
+
+rmax_plot <- make_weather_plot(
+  "mean_rmax_pct",
+  "C. Mean daily maximum relative humidity by county (gridMET, 2018-2024)",
+  "Mean Rmax (%)",
+  "viridis"
+)
+
+combined_plot <- attribution_plot / tmax_plot / rmax_plot +
+  patchwork::plot_layout(heights = c(1, 1, 1))
+
+save_plot <- function(plot, basename, width = 13.5, height = 21) {
   ggsave(file.path(output_dir, paste0(basename, ".pdf")), plot, width = width, height = height, device = cairo_pdf, bg = "white")
   svglite::svglite(file.path(output_dir, paste0(basename, ".svg")), width = width, height = height, bg = "white")
   print(plot)
@@ -223,7 +264,13 @@ save_plot <- function(plot, basename, width = 12, height = 7.6) {
   dev.off()
 }
 
-save_plot(county_map, "figure_site_attributed_county_map")
+readr::write_csv(
+  map_data |>
+    st_drop_geometry() |>
+    select("geoid", "county_label", "state_fips", "mean_tmax_c", "mean_rmax_pct", "map_group", "n_sites", "n_hospitals", "sites", "hospitals"),
+  file.path(output_dir, "figure_county_maps_abc_source.csv")
+)
 
-print(summary_table)
-message("Wrote site-attributed county map to ", output_dir)
+save_plot(combined_plot, "figure_county_maps_abc")
+
+message("Wrote ABC county map figure to ", output_dir)

@@ -17,7 +17,7 @@ get_script_path <- function() {
   normalizePath(sub(file_arg, "", match[[1]]), winslash = "/", mustWork = TRUE)
 }
 
-repo_root <- normalizePath(file.path(dirname(get_script_path()), ".."), winslash = "/", mustWork = TRUE)
+repo_root <- normalizePath(file.path(dirname(get_script_path()), "..", ".."), winslash = "/", mustWork = TRUE)
 
 ensure_user_library <- function() {
   version_parts <- strsplit(as.character(getRversion()), "\\.")[[1]]

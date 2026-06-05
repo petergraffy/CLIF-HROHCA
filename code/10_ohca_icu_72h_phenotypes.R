@@ -63,7 +63,8 @@ unlink(file.path(OUTPUT_DIR, c(
   "ohca_icu_72h_middle_imv_mental_state_continuous_models.csv",
   "ohca_icu_72h_middle_imv_mental_state_spline_models.csv",
   "ohca_icu_72h_middle_imv_mental_state_spline_curves.csv",
-  "ohca_icu_72h_middle_imv_mental_state_patient_audit.csv"
+  "ohca_icu_72h_middle_imv_mental_state_patient_audit.csv",
+  "ohca_icu_72h_gcs_hourly_by_phenotype.csv"
 )))
 
 WINDOW_HOURS <- 72
@@ -688,12 +689,14 @@ run_linear <- function(df, outcome, exposure, label, adjust_terms = character())
 }
 
 run_multinomial <- function(df, exposure, label, adjust_terms = character()) {
+  model_levels <- c("regained_consciousness_extubated", "limited_brain_function", "anoxic_brain_injury")
+  reference_level <- "regained_consciousness_extubated"
   if (!requireNamespace("nnet", quietly = TRUE)) {
     return(tibble::tibble(
       model = label,
       exposure = exposure,
       outcome_level = NA_character_,
-      reference_level = "regained_consciousness_extubated",
+      reference_level = reference_level,
       n = 0L,
       odds_ratio = NA_real_,
       ci_low = NA_real_,
@@ -705,16 +708,15 @@ run_multinomial <- function(df, exposure, label, adjust_terms = character()) {
       skip_reason = "Package nnet unavailable"
     ))
   }
-  keep_levels <- c("regained_consciousness_extubated", "limited_brain_function", "anoxic_brain_injury")
   base <- df |>
-    filter(.data$phenotype %in% keep_levels, !is.na(.data[[exposure]])) |>
-    mutate(phenotype = stats::relevel(factor(.data$phenotype, levels = keep_levels), ref = "regained_consciousness_extubated"))
+    filter(.data$phenotype %in% model_levels, !is.na(.data[[exposure]])) |>
+    mutate(phenotype = stats::relevel(factor(.data$phenotype, levels = model_levels), ref = reference_level))
   if (nrow(base) < 50 || length(unique(base$phenotype)) < 3 || any(table(base$phenotype) < 5) || length(unique(base[[exposure]])) < 2) {
     return(tibble::tibble(
       model = label,
       exposure = exposure,
-      outcome_level = setdiff(keep_levels, "regained_consciousness_extubated"),
-      reference_level = "regained_consciousness_extubated",
+      outcome_level = setdiff(model_levels, reference_level),
+      reference_level = reference_level,
       n = nrow(base),
       odds_ratio = NA_real_,
       ci_low = NA_real_,
@@ -736,8 +738,8 @@ run_multinomial <- function(df, exposure, label, adjust_terms = character()) {
     return(tibble::tibble(
       model = label,
       exposure = exposure,
-      outcome_level = setdiff(keep_levels, "regained_consciousness_extubated"),
-      reference_level = "regained_consciousness_extubated",
+      outcome_level = setdiff(model_levels, reference_level),
+      reference_level = reference_level,
       n = nrow(base),
       odds_ratio = NA_real_,
       ci_low = NA_real_,
@@ -766,7 +768,7 @@ run_multinomial <- function(df, exposure, label, adjust_terms = character()) {
       model = label,
       exposure = exposure,
       outcome_level = rownames(coef_mat),
-      reference_level = "regained_consciousness_extubated",
+      reference_level = reference_level,
       n = nrow(stats::model.frame(fit)),
       odds_ratio = NA_real_,
       ci_low = NA_real_,
@@ -789,7 +791,7 @@ run_multinomial <- function(df, exposure, label, adjust_terms = character()) {
       model = label,
       exposure = exposure,
       outcome_level = level,
-      reference_level = "regained_consciousness_extubated",
+      reference_level = reference_level,
       n = nrow(stats::model.frame(fit)),
       odds_ratio = ors[[1]],
       ci_low = ors[[2]],
@@ -919,19 +921,20 @@ run_spline_logistic <- function(df, outcome, label, adjust_terms = character(), 
 
 run_phenotype_assignment_model <- function(df, label, adjust_terms = character(), spline_df = 3L) {
   keep_levels <- c("regained_consciousness_extubated", "limited_brain_function", "anoxic_brain_injury")
+  reference_level <- "regained_consciousness_extubated"
   base <- df |>
     filter(
       .data$phenotype %in% keep_levels,
       !is.na(.data$tmax_mean_c), is.finite(.data$tmax_mean_c),
       !is.na(.data$rmax_mean_pct), is.finite(.data$rmax_mean_pct)
     ) |>
-    mutate(phenotype = stats::relevel(factor(.data$phenotype, levels = keep_levels), ref = "regained_consciousness_extubated"))
+    mutate(phenotype = stats::relevel(factor(.data$phenotype, levels = keep_levels), ref = reference_level))
 
   empty_summary <- tibble::tibble(
     model = label,
     n = nrow(base),
     spline_df = spline_df,
-    reference_level = "regained_consciousness_extubated",
+    reference_level = reference_level,
     reference_temp_c = NA_real_,
     reference_humidity_pct = NA_real_,
     min_temp_c = NA_real_,
@@ -943,6 +946,8 @@ run_phenotype_assignment_model <- function(df, label, adjust_terms = character()
     temperature_nonlinear_lrt_p_value = NA_real_,
     aic = NA_real_,
     covariates = paste(c("splines::ns(tmax_mean_c, df = 3)", "splines::ns(rmax_mean_pct, df = 3)", adjust_terms), collapse = " + "),
+    modeled_phenotypes = paste(keep_levels, collapse = " | "),
+    excluded_phenotypes = paste(setdiff(levels(factor(df$phenotype)), keep_levels), collapse = " | "),
     omitted_terms = NA_character_,
     estimable = FALSE,
     skip_reason = "Insufficient phenotype counts, sample size, temperature variation, or humidity variation"
@@ -1030,7 +1035,7 @@ run_phenotype_assignment_model <- function(df, label, adjust_terms = character()
     model = label,
     n = nrow(stats::model.frame(full_fit)),
     spline_df = spline_df,
-    reference_level = "regained_consciousness_extubated",
+    reference_level = reference_level,
     reference_temp_c = ref_temp,
     reference_humidity_pct = ref_humidity,
     min_temp_c = min(base$tmax_mean_c, na.rm = TRUE),
@@ -1042,6 +1047,8 @@ run_phenotype_assignment_model <- function(df, label, adjust_terms = character()
     temperature_nonlinear_lrt_p_value = lrt_p(linear_temp_fit, full_fit),
     aic = stats::AIC(full_fit),
     covariates = paste(c(temp_term, humidity_term, term_info$keep), collapse = " + "),
+    modeled_phenotypes = paste(keep_levels, collapse = " | "),
+    excluded_phenotypes = paste(setdiff(levels(factor(df$phenotype)), keep_levels), collapse = " | "),
     omitted_terms = paste(term_info$omitted, collapse = "; "),
     estimable = TRUE,
     skip_reason = NA_character_
@@ -1060,7 +1067,7 @@ run_phenotype_assignment_model <- function(df, label, adjust_terms = character()
     ) |>
     mutate(
       model = label,
-      reference_level = "regained_consciousness_extubated",
+      reference_level = reference_level,
       n = nrow(stats::model.frame(full_fit)),
       spline_df = spline_df,
       covariates = paste(c(temp_term, humidity_term, term_info$keep), collapse = " + "),
@@ -1104,7 +1111,7 @@ run_phenotype_assignment_model <- function(df, label, adjust_terms = character()
       left_join(col_info, by = "col_name") |>
       transmute(
         model = label,
-        reference_level = "regained_consciousness_extubated",
+        reference_level = reference_level,
         n = nrow(stats::model.frame(full_fit)),
         spline_df = spline_df,
         outcome_level_row,
@@ -1263,7 +1270,7 @@ if (is.null(assessments) || nrow(assessments) == 0) {
     sat_pass_0_72h = FALSE,
     sbt_pass_0_72h = FALSE
   )
-  gcs_hourly_patient <- tibble::tibble(hospitalization_id = character(), icu_hour_bin = integer(), gcs_total_median_hour = numeric())
+  gcs_landmark_patient <- tibble::tibble(hospitalization_id = character(), gcs_landmark_hour = integer(), gcs_total_landmark = numeric())
 } else {
   assessment_long <- assessments |>
     transmute(
@@ -1308,15 +1315,21 @@ if (is.null(assessments) || nrow(assessments) == 0) {
       across(c(min_gcs_0_72h, best_gcs_24_72h, min_gcs_motor_0_72h, best_gcs_motor_24_72h, min_rass_0_72h, best_rass_24_72h), ~ ifelse(is.infinite(.x), NA_real_, .x))
     )
 
-  gcs_hourly_patient <- assessment_long |>
+  gcs_landmark_patient <- assessment_long |>
     filter(
       .data$assessment_category_clean == "gcs_total",
       .data$numerical_value >= 3,
       .data$numerical_value <= 15
     ) |>
-    mutate(icu_hour_bin = pmin(floor(.data$icu_hour), WINDOW_HOURS)) |>
-    group_by(.data$hospitalization_id, .data$icu_hour_bin) |>
-    summarise(gcs_total_median_hour = median(.data$numerical_value, na.rm = TRUE), .groups = "drop")
+    mutate(gcs_landmark_hour = dplyr::case_when(
+      .data$icu_hour > 12 & .data$icu_hour <= 24 ~ 24L,
+      .data$icu_hour > 24 & .data$icu_hour <= 48 ~ 48L,
+      .data$icu_hour > 48 & .data$icu_hour <= 72 ~ 72L,
+      TRUE ~ NA_integer_
+    )) |>
+    filter(!is.na(.data$gcs_landmark_hour)) |>
+    group_by(.data$hospitalization_id, .data$gcs_landmark_hour) |>
+    summarise(gcs_total_landmark = median(.data$numerical_value, na.rm = TRUE), .groups = "drop")
 }
 
 medication_continuous <- read_clif_table(
@@ -1421,11 +1434,13 @@ phenotype_cohort <- cohort |>
     ),
     phenotype = dplyr::case_when(
       .data$death_within_72h ~ "anoxic_brain_injury",
+      !.data$any_imv_0_72h ~ "alive_no_imv",
       .data$extubated_by_72h & .data$awake_signal ~ "regained_consciousness_extubated",
       .data$severe_neuro_signal | .data$impaired_neuro_signal | .data$any_imv_48_72h | (.data$any_imv_0_72h & !.data$extubated_by_72h) ~ "limited_brain_function",
       TRUE ~ "unclassified"
     ),
     phenotype = factor(.data$phenotype, levels = c(
+      "alive_no_imv",
       "regained_consciousness_extubated",
       "limited_brain_function",
       "anoxic_brain_injury",
@@ -1517,22 +1532,24 @@ phenotype_assignment_vcov_mechanism <- phenotype_assignment_mechanism$vcov |>
 
 phenotype_definitions <- tibble::tibble(
   phenotype = c(
+    "alive_no_imv",
     "anoxic_brain_injury",
     "regained_consciousness_extubated",
     "limited_brain_function",
     "unclassified"
   ),
-  hierarchy_order = c(1L, 2L, 3L, 4L),
+  hierarchy_order = c(2L, 1L, 3L, 4L, 5L),
   definition = c(
+    "Alive at 72 hours and no invasive mechanical ventilation evidence during the first 72 ICU hours.",
     "Death within 72 hours of ICU entry. No diagnosis-code criterion is applied.",
     "Not anoxic phenotype; invasive ventilation occurred in first 72 ICU hours; evidence of extubation/no ongoing IMV by 72h; and awake signal from GCS >=13, GCS motor 6, RASS >=-1, AVPU alert, SAT pass, or SBT pass.",
     "Not anoxic or extubated-awake phenotype; severe or impaired neurologic signal in first 72 ICU hours, ongoing IMV at 48-72h, or IMV in first 72h without evidence of extubation.",
-    "Does not meet structured-data criteria for the three primary phenotypes."
+    "Does not meet structured-data criteria for the four primary phenotypes."
   )
 ) |>
   mutate(site_name = site_name, .before = 1)
 
-primary_phenotype_levels <- c("regained_consciousness_extubated", "limited_brain_function", "anoxic_brain_injury")
+primary_phenotype_levels <- c("alive_no_imv", "regained_consciousness_extubated", "limited_brain_function", "anoxic_brain_injury")
 table2_phenotype_levels <- c(primary_phenotype_levels, "unclassified")
 phenotype_analysis_cohort <- phenotype_cohort |>
   filter(.data$phenotype %in% primary_phenotype_levels) |>
@@ -1541,31 +1558,31 @@ phenotype_analysis_cohort <- phenotype_cohort |>
 phenotype_table_cohort <- phenotype_cohort |>
   mutate(phenotype = factor(as.character(.data$phenotype), levels = table2_phenotype_levels))
 
-gcs_hourly_by_phenotype <- gcs_hourly_patient |>
+gcs_landmark_by_phenotype <- gcs_landmark_patient |>
   left_join(phenotype_table_cohort |> select("hospitalization_id", "phenotype"), by = "hospitalization_id") |>
   filter(!is.na(.data$phenotype)) |>
-  group_by(.data$phenotype, .data$icu_hour_bin) |>
+  group_by(.data$phenotype, .data$gcs_landmark_hour) |>
   summarise(
-    n_with_gcs = sum(!is.na(.data$gcs_total_median_hour)),
-    mean_gcs = mean(.data$gcs_total_median_hour, na.rm = TRUE),
-    median_gcs = median(.data$gcs_total_median_hour, na.rm = TRUE),
-    q1_gcs = stats::quantile(.data$gcs_total_median_hour, 0.25, na.rm = TRUE, names = FALSE),
-    q3_gcs = stats::quantile(.data$gcs_total_median_hour, 0.75, na.rm = TRUE, names = FALSE),
+    n_with_gcs = sum(!is.na(.data$gcs_total_landmark)),
+    mean_gcs = mean(.data$gcs_total_landmark, na.rm = TRUE),
+    median_gcs = median(.data$gcs_total_landmark, na.rm = TRUE),
+    q1_gcs = stats::quantile(.data$gcs_total_landmark, 0.25, na.rm = TRUE, names = FALSE),
+    q3_gcs = stats::quantile(.data$gcs_total_landmark, 0.75, na.rm = TRUE, names = FALSE),
     .groups = "drop"
   ) |>
   mutate(site_name = site_name, .before = 1)
 
-gcs_hourly_table_rows <- dplyr::bind_rows(lapply(seq(0, WINDOW_HOURS), function(hour_bin) {
+gcs_landmark_table_rows <- dplyr::bind_rows(lapply(c(24L, 48L, 72L), function(landmark_hour) {
   vals <- vapply(table2_phenotype_levels, function(ph) {
-    fmt_median_iqr_n(gcs_hourly_patient$gcs_total_median_hour[
-      gcs_hourly_patient$hospitalization_id %in% phenotype_table_cohort$hospitalization_id[phenotype_table_cohort$phenotype == ph] &
-        gcs_hourly_patient$icu_hour_bin == hour_bin
+    fmt_median_iqr_n(gcs_landmark_patient$gcs_total_landmark[
+      gcs_landmark_patient$hospitalization_id %in% phenotype_table_cohort$hospitalization_id[phenotype_table_cohort$phenotype == ph] &
+        gcs_landmark_patient$gcs_landmark_hour == landmark_hour
     ])
   }, character(1))
   tibble::tibble(
-    section = "Neurologic trajectory",
-    characteristic = "GCS total by ICU hour, median [IQR]",
-    level = sprintf("Hour %02d", hour_bin)
+    section = "Neurologic status",
+    characteristic = "GCS total by ICU landmark, median [IQR]",
+    level = sprintf("Hour %d", landmark_hour)
   ) |>
     bind_cols(as_tibble(as.list(vals)))
 }))
@@ -1576,13 +1593,14 @@ summary_value <- function(col) {
 }
 
 consort_counts <- tibble::tibble(
-  step_order = seq_len(8),
+  step_order = seq_len(9),
   step = c(
     "All ICU admissions in CLIF, 2018-2024",
     "OHCA present-on-admission ICU admissions before pathway/timing restriction",
     "OHCA ICU admissions with allowed ED/procedure/direct ICU pathway and ICU entry <24h",
     "OHCA ICU admissions with admission-day county Tmax and humidity",
-    "Classified into one of three primary 72h phenotypes",
+    "Classified into one of four primary 72h phenotypes",
+    "Alive at 72h with no IMV in first 72h",
     "Regained consciousness and extubated",
     "Limited brain function",
     "Anoxic/severe group: death within 72h"
@@ -1593,6 +1611,7 @@ consort_counts <- tibble::tibble(
     summary_value("n_ohca_admissions"),
     nrow(phenotype_cohort),
     nrow(phenotype_analysis_cohort),
+    sum(phenotype_analysis_cohort$phenotype == "alive_no_imv", na.rm = TRUE),
     sum(phenotype_analysis_cohort$phenotype == "regained_consciousness_extubated", na.rm = TRUE),
     sum(phenotype_analysis_cohort$phenotype == "limited_brain_function", na.rm = TRUE),
     sum(phenotype_analysis_cohort$phenotype == "anoxic_brain_injury", na.rm = TRUE)
@@ -1603,6 +1622,7 @@ consort_counts <- tibble::tibble(
     "Cohort definition used for all OHCA ICU heat analyses",
     "Required exposure fields for 72h phenotype and competing-risk models",
     "Excludes unclassified structured-data phenotype",
+    "Alive at 72h and no invasive mechanical ventilation evidence in first 72 ICU hours",
     "Not death within 72h; IMV in first 72h; extubated/no ongoing IMV by 72h; awake signal",
     "Not death within 72h or regained/extubated; impaired neurologic signal and/or ongoing IMV evidence",
     "Death within 72h of ICU entry"
@@ -1616,7 +1636,7 @@ consort_counts <- tibble::tibble(
   )
 
 table1 <- bind_rows(
-  tibble::tibble(section = "Cohort", characteristic = "Three primary phenotype cohort", level = "", value = format(nrow(phenotype_analysis_cohort), big.mark = ",")),
+  tibble::tibble(section = "Cohort", characteristic = "Four primary phenotype cohort", level = "", value = format(nrow(phenotype_analysis_cohort), big.mark = ",")),
   add_table1_continuous(phenotype_analysis_cohort, "Demographics", "Age, years, median [IQR]", "age_at_admission"),
   add_table1_categorical(phenotype_analysis_cohort, "Demographics", "Sex", "sex_category"),
   add_table1_categorical(phenotype_analysis_cohort, "Demographics", "Race", "race_category"),
@@ -1659,7 +1679,7 @@ table2 <- bind_rows(
   add_table2_binary(phenotype_table_cohort, "Awake signal components", "SAT pass in first 72h", "sat_pass_0_72h", table2_phenotype_levels),
   add_table2_binary(phenotype_table_cohort, "Awake signal components", "SBT pass in first 72h", "sbt_pass_0_72h", table2_phenotype_levels),
   add_table2_binary(phenotype_table_cohort, "72h phenotype evidence", "Impaired neurologic signal", "impaired_neuro_signal", table2_phenotype_levels),
-  gcs_hourly_table_rows,
+  gcs_landmark_table_rows,
   add_table2_binary(phenotype_table_cohort, "Outcome", "In-hospital mortality", "hospital_death", table2_phenotype_levels),
   add_table2_binary(phenotype_table_cohort, "Outcome", "Death within 72h", "death_within_72h", table2_phenotype_levels),
   add_table2_categorical(phenotype_table_cohort |> filter(.data$phenotype == "unclassified"), "Unclassified audit", "Reason unclassified", "unclassified_reason", table2_phenotype_levels)
@@ -1685,7 +1705,7 @@ readr::write_csv(phenotype_summary, file.path(OUTPUT_DIR, "ohca_icu_72h_phenotyp
 readr::write_csv(consort_counts, file.path(OUTPUT_DIR, "ohca_icu_72h_consort_flow.csv"))
 readr::write_csv(table1, file.path(OUTPUT_DIR, "ohca_icu_72h_table1.csv"))
 readr::write_csv(table2, file.path(OUTPUT_DIR, "ohca_icu_72h_table2_by_phenotype.csv"))
-readr::write_csv(gcs_hourly_by_phenotype, file.path(OUTPUT_DIR, "ohca_icu_72h_gcs_hourly_by_phenotype.csv"))
+readr::write_csv(gcs_landmark_by_phenotype, file.path(OUTPUT_DIR, "ohca_icu_72h_gcs_landmark_by_phenotype.csv"))
 readr::write_csv(mechanism_summary, file.path(OUTPUT_DIR, "ohca_icu_72h_ohca_mechanism_summary.csv"))
 readr::write_csv(evidence_summary, file.path(OUTPUT_DIR, "ohca_icu_72h_phenotype_evidence_summary.csv"))
 readr::write_csv(phenotype_assignment_model, file.path(OUTPUT_DIR, "ohca_icu_72h_phenotype_assignment_model.csv"))
@@ -1700,13 +1720,14 @@ readr::write_csv(phenotype_definitions, file.path(OUTPUT_DIR, "ohca_icu_72h_phen
 
 plot_df <- phenotype_summary |>
   filter(.data$phenotype != "unclassified") |>
-  mutate(phenotype = factor(.data$phenotype, levels = rev(c("regained_consciousness_extubated", "limited_brain_function", "anoxic_brain_injury"))))
+  mutate(phenotype = factor(.data$phenotype, levels = rev(c("alive_no_imv", "regained_consciousness_extubated", "limited_brain_function", "anoxic_brain_injury"))))
 
 if (nrow(plot_df) > 0) {
   p <- ggplot(plot_df, aes(x = .data$n, y = .data$phenotype, fill = .data$phenotype)) +
     geom_col(width = 0.7) +
     geom_text(aes(label = sprintf("%s (%.1f%%)", .data$n, .data$pct)), hjust = -0.05, size = 3.5) +
     scale_fill_manual(values = c(
+      "alive_no_imv" = "#457B9D",
       "regained_consciousness_extubated" = "#2A9D8F",
       "limited_brain_function" = "#E9C46A",
       "anoxic_brain_injury" = "#C44536"
@@ -1727,14 +1748,15 @@ if (nrow(phenotype_assignment_curve) > 0 && isTRUE(phenotype_assignment_model$es
     mutate(
       phenotype = factor(
         .data$phenotype,
-        levels = c("regained_consciousness_extubated", "limited_brain_function", "anoxic_brain_injury"),
-        labels = c("Regained/extubated", "Limited brain function", "Death within 72h")
+        levels = c("alive_no_imv", "regained_consciousness_extubated", "limited_brain_function", "anoxic_brain_injury"),
+        labels = c("Alive/no IMV", "Regained/extubated", "Limited brain function", "Death within 72h")
       )
     )
 
   p_curve <- ggplot(curve_plot, aes(x = .data$tmax_mean_c, y = .data$predicted_probability, color = .data$phenotype)) +
     geom_line(linewidth = 1) +
     scale_color_manual(values = c(
+      "Alive/no IMV" = "#457B9D",
       "Regained/extubated" = "#2A9D8F",
       "Limited brain function" = "#E9C46A",
       "Death within 72h" = "#C44536"

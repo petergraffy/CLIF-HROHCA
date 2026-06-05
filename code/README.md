@@ -2,6 +2,8 @@
 
 The site-facing workflow is R-only and uses numbered scripts in this folder.
 
+Top-level scripts in `code/` are the site-running workflow. Coordinating-center pooling, manuscript figures, and other post-processing helpers live in `code/post_processing/`. Historical scripts that are no longer part of the current analytic flow live in `code/archive/`.
+
 Most sites should run:
 
 Windows PowerShell:
@@ -58,3 +60,11 @@ The workflow can run with the required cohort/modeling tables only, but the 72-h
 ## Privacy Boundary
 
 Only `output/final/federated_exports/` should be shared. This folder contains aggregate DLNM and 72-hour phenotype CSVs plus selected site-level PNG figures. The scripts intentionally keep row-level CLIF-derived working files under `output/intermediate/`, which is git-ignored and should remain local.
+
+## Post-Processing
+
+After aggregate site exports are available, pooled analyses and manuscript figures can be run from `code/post_processing/`. For example:
+
+```bash
+Rscript code/post_processing/90_pool_federated_results.R
+```

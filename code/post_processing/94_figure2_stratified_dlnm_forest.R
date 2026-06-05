@@ -13,7 +13,7 @@ get_script_path <- function() {
   normalizePath(sub(file_arg, "", match[[1]]), winslash = "/", mustWork = TRUE)
 }
 
-repo_root <- normalizePath(file.path(dirname(get_script_path()), ".."), winslash = "/", mustWork = TRUE)
+repo_root <- normalizePath(file.path(dirname(get_script_path()), "..", ".."), winslash = "/", mustWork = TRUE)
 input_path <- file.path(repo_root, "output", "final", "federated_pooled", "pooled_dlnm_random_effects_results.csv")
 output_dir <- file.path(repo_root, "output", "final", "manuscript_figures")
 dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)

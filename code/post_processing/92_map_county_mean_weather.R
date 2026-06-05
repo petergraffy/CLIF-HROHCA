@@ -13,7 +13,7 @@ get_script_path <- function() {
   normalizePath(sub(file_arg, "", match[[1]]), winslash = "/", mustWork = TRUE)
 }
 
-repo_root <- normalizePath(file.path(dirname(get_script_path()), ".."), winslash = "/", mustWork = TRUE)
+repo_root <- normalizePath(file.path(dirname(get_script_path()), "..", ".."), winslash = "/", mustWork = TRUE)
 output_dir <- file.path(repo_root, "output", "final", "county_weather_maps")
 dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
 

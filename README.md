@@ -4,6 +4,8 @@ Federated CLIF analysis of heat exposure and out-of-hospital cardiac arrest (OHC
 
 Each site runs the same R workflow locally against its own CLIF 2.1 tables. Sites should share only the aggregate outputs in `output/final/federated_exports/`.
 
+The top-level `code/` scripts are the site-facing pipeline. Pooling, manuscript figures, and other aggregate post-processing helpers are kept separately in `code/post_processing/`; historical scripts from earlier analytic versions are retained in `code/archive/`.
+
 ## Study Aim
 
 Estimate whether county-level heat exposure is associated with daily OHCA ICU admissions and, among OHCA patients admitted to the ICU, whether admission-day temperature and humidity are associated with 72-hour neurologic/recovery phenotypes.
@@ -167,7 +169,7 @@ Core analytic outputs:
 - `SITE_ohca_icu_72h_consort_flow.csv`
 - `SITE_ohca_icu_72h_table1.csv`
 - `SITE_ohca_icu_72h_table2_by_phenotype.csv`
-- `SITE_ohca_icu_72h_gcs_hourly_by_phenotype.csv`
+- `SITE_ohca_icu_72h_gcs_landmark_by_phenotype.csv`
 - `SITE_ohca_icu_72h_phenotype_summary.csv`
 - `SITE_ohca_icu_72h_ohca_mechanism_summary.csv`
 - `SITE_ohca_icu_72h_phenotype_evidence_summary.csv`

@@ -13,7 +13,7 @@ get_script_path <- function() {
   normalizePath(sub(file_arg, "", match[[1]]), winslash = "/", mustWork = TRUE)
 }
 
-repo_root <- normalizePath(file.path(dirname(get_script_path()), ".."), winslash = "/", mustWork = TRUE)
+repo_root <- normalizePath(file.path(dirname(get_script_path()), "..", ".."), winslash = "/", mustWork = TRUE)
 pooled_dir <- file.path(repo_root, "output", "final", "federated_pooled")
 table_dir <- file.path(repo_root, "output", "final", "manuscript_tables")
 dir.create(table_dir, recursive = TRUE, showWarnings = FALSE)
