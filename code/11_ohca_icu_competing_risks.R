@@ -245,6 +245,62 @@ extract_crr_vcov <- function(fit, model, n, events, competing, covariates, omitt
     )
 }
 
+extract_cif_curve <- function(df, model = "awake_extubated_72h_cif", time_grid_hours = 0:FOLLOWUP_HOURS,
+                              stratification = "Overall", stratum = "Overall", stratum_order = 0,
+                              stratum_min_temp_c = NA_real_, stratum_max_temp_c = NA_real_) {
+  base <- df |>
+    filter(!is.na(.data$fg_time_hours), is.finite(.data$fg_time_hours), .data$fg_time_hours >= 0, !is.na(.data$fg_status))
+  if (nrow(base) == 0 || !any(base$fg_status %in% c(1L, 2L))) {
+    return(tibble::tibble())
+  }
+
+  cif <- cmprsk::cuminc(
+    ftime = base$fg_time_hours,
+    fstatus = base$fg_status,
+    cencode = 0
+  )
+
+  event_labels <- c(
+    "1" = "Awake/extubated",
+    "2" = "Death before awake/extubated"
+  )
+
+  purrr::map_dfr(names(event_labels), function(event_code) {
+    object_name <- names(cif)[stringr::str_detect(names(cif), paste0("(^| )", event_code, "$"))][1]
+    if (is.na(object_name)) return(tibble::tibble())
+    curve <- cif[[object_name]]
+    curve_times <- c(0, curve$time)
+    curve_est <- c(0, curve$est)
+    curve_var <- c(0, curve$var)
+    unique_times <- sort(unique(curve_times))
+    curve_est <- vapply(unique_times, function(x) tail(curve_est[curve_times == x], 1), numeric(1))
+    curve_var <- vapply(unique_times, function(x) tail(curve_var[curve_times == x], 1), numeric(1))
+    curve_times <- unique_times
+    out <- tibble::tibble(
+      model = model,
+      event_code = as.integer(event_code),
+      event_type = unname(event_labels[[event_code]]),
+      time_hours = time_grid_hours,
+      cif = stats::approx(curve_times, curve_est, xout = time_grid_hours, method = "constant", f = 0, rule = 2)$y,
+      variance = stats::approx(curve_times, curve_var, xout = time_grid_hours, method = "constant", f = 0, rule = 2)$y,
+      n = nrow(base),
+      events_awake_extubated = sum(base$fg_status == 1L, na.rm = TRUE),
+      competing_deaths = sum(base$fg_status == 2L, na.rm = TRUE)
+    )
+    out$standard_error <- sqrt(pmax(out$variance, 0))
+    out$stratification <- stratification
+    out$stratum <- stratum
+    out$stratum_order <- stratum_order
+    out$stratum_min_temp_c <- stratum_min_temp_c
+    out$stratum_max_temp_c <- stratum_max_temp_c
+    out[, c(
+      "model", "stratification", "stratum", "stratum_order", "stratum_min_temp_c", "stratum_max_temp_c",
+      "event_code", "event_type", "time_hours", "cif", "variance", "standard_error",
+      "n", "events_awake_extubated", "competing_deaths"
+    )]
+  })
+}
+
 run_fine_gray <- function(df, exposure_terms, model, exposure_label, exposure_regex, adjust_terms = character()) {
   base <- df |>
     filter(!is.na(.data$fg_time_days), is.finite(.data$fg_time_days), .data$fg_time_days > 0, !is.na(.data$fg_status))
@@ -593,7 +649,20 @@ analysis <- cohort |>
     fg_time_days = as.numeric(difftime(.data$event_dttm, .data$first_icu_in, units = "days")),
     fg_time_hours = as.numeric(difftime(.data$event_dttm, .data$first_icu_in, units = "hours"))
   ) |>
-  filter(!is.na(.data$fg_time_days), .data$fg_time_days > 0)
+  filter(!is.na(.data$fg_time_days), .data$fg_time_days > 0) |>
+  mutate(
+    admission_tmax_quartile_id = dplyr::ntile(.data$tmax_mean_c, 4L),
+    admission_tmax_quartile = factor(
+      dplyr::case_when(
+        .data$admission_tmax_quartile_id == 1L ~ "Q1 coolest",
+        .data$admission_tmax_quartile_id == 2L ~ "Q2",
+        .data$admission_tmax_quartile_id == 3L ~ "Q3",
+        .data$admission_tmax_quartile_id == 4L ~ "Q4 hottest",
+        TRUE ~ NA_character_
+      ),
+      levels = c("Q1 coolest", "Q2", "Q3", "Q4 hottest")
+    )
+  )
 
 summary_tbl <- analysis |>
   mutate(status_label = dplyr::case_when(
@@ -608,6 +677,24 @@ summary_tbl <- analysis |>
     definition = "Fine-Gray at-risk cohort is OHCA ICU admissions with invasive ventilation after ICU entry. Follow-up is administratively censored at 72 ICU hours. Event of interest is being both extubated and awake by 72 hours, defined as the later of first post-final-IMV non-IMV respiratory support record and first awake signal. Awake signal mirrors the regained-consciousness phenotype: GCS total >=13, GCS motor 6, or RASS >=-1 after ICU hour 24; AVPU alert, SAT pass, or SBT pass after ICU entry. Competing event is death before awake/extubated by 72 hours. Patients with neither event by 72 hours are censored as neither by 72h. Death time uses patient death_dttm when present, otherwise expired/death discharge with last recorded vital as fallback.",
     .before = 1
   )
+
+cif_overall <- extract_cif_curve(analysis)
+cif_by_tmax_quartile <- purrr::map_dfr(seq_len(4), function(quartile_id) {
+  quartile_df <- analysis |>
+    filter(.data$admission_tmax_quartile_id == quartile_id)
+  if (nrow(quartile_df) == 0) return(tibble::tibble())
+  quartile_label <- as.character(stats::na.omit(unique(quartile_df$admission_tmax_quartile))[1])
+  extract_cif_curve(
+    quartile_df,
+    stratification = "Admission Tmax quartile",
+    stratum = quartile_label,
+    stratum_order = quartile_id,
+    stratum_min_temp_c = min(quartile_df$tmax_mean_c, na.rm = TRUE),
+    stratum_max_temp_c = max(quartile_df$tmax_mean_c, na.rm = TRUE)
+  )
+})
+cif_curves <- bind_rows(cif_overall, cif_by_tmax_quartile) |>
+  mutate(site_name = site_name, .before = 1)
 
 death_source_summary <- analysis |>
   count(.data$death_source, name = "n") |>
@@ -679,6 +766,7 @@ patient_audit <- analysis |>
   mutate(site_name = site_name, .before = 1)
 
 readr::write_csv(summary_tbl, file.path(OUTPUT_DIR, "ohca_icu_competing_risk_awake_extubated_72h_summary.csv"))
+readr::write_csv(cif_curves, file.path(OUTPUT_DIR, "ohca_icu_competing_risk_awake_extubated_72h_cif_curves.csv"))
 readr::write_csv(death_source_summary, file.path(OUTPUT_DIR, "ohca_icu_competing_risk_death_source_summary.csv"))
 readr::write_csv(mechanism_summary, file.path(OUTPUT_DIR, "ohca_icu_competing_risk_awake_extubated_72h_ohca_mechanism_summary.csv"))
 readr::write_csv(models, file.path(OUTPUT_DIR, "ohca_icu_competing_risk_awake_extubated_72h_fine_gray_models.csv"))
@@ -686,6 +774,60 @@ readr::write_csv(model_coefficients, file.path(OUTPUT_DIR, "ohca_icu_competing_r
 readr::write_csv(model_vcov, file.path(OUTPUT_DIR, "ohca_icu_competing_risk_awake_extubated_72h_vcov.csv"))
 readr::write_csv(patient_audit, file.path(OUTPUT_DIR, "ohca_icu_competing_risk_awake_extubated_72h_patient_audit.csv"))
 
+if (nrow(cif_curves) > 0) {
+  cif_plot <- ggplot(
+    filter(cif_curves, .data$stratification == "Overall"),
+    aes(x = .data$time_hours, y = .data$cif, color = .data$event_type)
+  ) +
+    geom_step(linewidth = 1.1) +
+    scale_y_continuous(labels = function(x) paste0(round(100 * x), "%"), limits = c(0, NA)) +
+    scale_color_manual(values = c("Awake/extubated" = "#0f6b78", "Death before awake/extubated" = "#8c3b3b")) +
+    labs(
+      title = "72-hour competing-risk cumulative incidence after OHCA ICU admission",
+      subtitle = "Event of interest is awake/extubated; death before awake/extubated is the competing event.",
+      x = "Hours since ICU admission",
+      y = "Cumulative incidence",
+      color = NULL
+    ) +
+    theme_minimal(base_size = 12) +
+    theme(
+      panel.grid.minor = element_blank(),
+      plot.title = element_text(face = "bold"),
+      plot.subtitle = element_text(color = "grey35"),
+      legend.position = "bottom"
+    )
+  ggsave(file.path(FIGURE_DIR, "figure_ohca_icu_competing_risk_awake_extubated_72h_cif.png"), cif_plot, width = 8, height = 5, dpi = 300)
+
+  quartile_cif <- cif_curves |>
+    filter(.data$stratification == "Admission Tmax quartile") |>
+    mutate(stratum = factor(.data$stratum, levels = c("Q1 coolest", "Q2", "Q3", "Q4 hottest")))
+  if (nrow(quartile_cif) > 0) {
+    quartile_plot <- ggplot(quartile_cif, aes(x = .data$time_hours, y = .data$cif, color = .data$stratum)) +
+      geom_step(linewidth = 1.05) +
+      facet_wrap(vars(.data$event_type), nrow = 1) +
+      scale_y_continuous(labels = function(x) paste0(round(100 * x), "%"), limits = c(0, NA)) +
+      scale_x_continuous(breaks = seq(0, FOLLOWUP_HOURS, by = 12), limits = c(0, FOLLOWUP_HOURS)) +
+      scale_color_manual(values = c("Q1 coolest" = "#335c67", "Q2" = "#8f7a2f", "Q3" = "#c06c3e", "Q4 hottest" = "#9b2f37")) +
+      labs(
+        title = "72-hour competing-risk cumulative incidence by admission temperature quartile",
+        subtitle = "Quartiles are defined within site from admission daily maximum temperature.",
+        x = "Hours since ICU admission",
+        y = "Cumulative incidence",
+        color = "Tmax quartile"
+      ) +
+      theme_minimal(base_size = 12) +
+      theme(
+        panel.grid.minor = element_blank(),
+        plot.title = element_text(face = "bold"),
+        plot.subtitle = element_text(color = "grey35"),
+        strip.text = element_text(face = "bold"),
+        legend.position = "bottom"
+      )
+    ggsave(file.path(FIGURE_DIR, "figure_ohca_icu_competing_risk_awake_extubated_72h_cif_by_tmax_quartile.png"), quartile_plot, width = 10, height = 5, dpi = 300)
+  }
+}
+
 print(summary_tbl)
+print(cif_curves |> filter(.data$time_hours %in% c(0, 24, 48, 72)))
 print(death_source_summary)
 print(models)

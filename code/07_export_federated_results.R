@@ -97,6 +97,7 @@ exports <- list(
   list(file.path(phenotype_dir, "ohca_icu_72h_phenotype_assignment_coefficients_mechanism_adjusted.csv"), "ohca_icu_72h_phenotype_assignment_coefficients_mechanism_adjusted"),
   list(file.path(phenotype_dir, "ohca_icu_72h_phenotype_assignment_vcov_mechanism_adjusted.csv"), "ohca_icu_72h_phenotype_assignment_vcov_mechanism_adjusted"),
   list(file.path(phenotype_dir, "ohca_icu_competing_risk_awake_extubated_72h_summary.csv"), "ohca_icu_competing_risk_awake_extubated_72h_summary"),
+  list(file.path(phenotype_dir, "ohca_icu_competing_risk_awake_extubated_72h_cif_curves.csv"), "ohca_icu_competing_risk_awake_extubated_72h_cif_curves"),
   list(file.path(phenotype_dir, "ohca_icu_competing_risk_death_source_summary.csv"), "ohca_icu_competing_risk_death_source_summary"),
   list(file.path(phenotype_dir, "ohca_icu_competing_risk_awake_extubated_72h_ohca_mechanism_summary.csv"), "ohca_icu_competing_risk_awake_extubated_72h_ohca_mechanism_summary"),
   list(file.path(phenotype_dir, "ohca_icu_competing_risk_awake_extubated_72h_fine_gray_models.csv"), "ohca_icu_competing_risk_awake_extubated_72h_fine_gray_models"),
@@ -116,7 +117,9 @@ figure_paths <- file.path(figure_dir, c(
   "figure_lag30_hot_temperature_cumulative_rr_by_lag.png",
   "figure_ohca_icu_admission_rate_temperature_timeseries.png",
   "figure_ohca_icu_72h_phenotype_counts.png",
-  "figure_ohca_icu_72h_phenotype_temperature_curves.png"
+  "figure_ohca_icu_72h_phenotype_temperature_curves.png",
+  "figure_ohca_icu_competing_risk_awake_extubated_72h_cif.png",
+  "figure_ohca_icu_competing_risk_awake_extubated_72h_cif_by_tmax_quartile.png"
 ))
 invisible(lapply(figure_paths, copy_figure))
 
