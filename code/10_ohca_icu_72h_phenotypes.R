@@ -25,7 +25,6 @@ suppressPackageStartupMessages({
   library(arrow)
   library(dplyr)
   library(ggplot2)
-  library(jsonlite)
   library(lubridate)
   library(readr)
   library(splines)

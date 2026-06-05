@@ -24,7 +24,6 @@ ensure_user_library(repo_root)
 suppressPackageStartupMessages({
   library(arrow)
   library(dplyr)
-  library(jsonlite)
   library(lubridate)
   library(readr)
   library(stringr)

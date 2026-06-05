@@ -4,7 +4,6 @@ required_packages <- c(
   "dlnm",
   "dplyr",
   "ggplot2",
-  "jsonlite",
   "lubridate",
   "readr",
   "stringr",
@@ -42,7 +41,26 @@ load_project_config <- function(repo_root) {
   if (!file.exists(config_path)) {
     stop("Missing config/config.json. Copy config/config_template.json and update site_name and tables_path.")
   }
-  jsonlite::fromJSON(config_path, simplifyVector = TRUE)
+  if (requireNamespace("jsonlite", quietly = TRUE)) {
+    return(jsonlite::fromJSON(config_path, simplifyVector = TRUE))
+  }
+
+  lines <- readLines(config_path, warn = FALSE)
+  lines <- trimws(lines)
+  lines <- lines[nzchar(lines) & !lines %in% c("{", "}")]
+  lines <- sub(",\\s*$", "", lines)
+  config <- list()
+  for (line in lines) {
+    match <- regexec('^"([^"]+)"\\s*:\\s*"(.*)"$', line)
+    parts <- regmatches(line, match)[[1]]
+    if (length(parts) == 3) {
+      config[[parts[[2]]]] <- gsub('\\\\(["\\\\/bfnrt])', "\\1", parts[[3]])
+    }
+  }
+  if (length(config) == 0) {
+    stop("Could not parse config/config.json. Install jsonlite or use the simple string-key config template.")
+  }
+  config
 }
 
 validate_site_name <- function(config, repo_root) {
