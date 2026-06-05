@@ -51,7 +51,9 @@ The workflow can run with the required cohort/modeling tables only, but the 72-h
 
 - `clif_respiratory_support`: IMV trajectories, duration, 72-hour extubation evidence, and competing-risk awake/extubated timing.
 - `clif_patient_assessments`: GCS, RASS, AVPU, SAT, and SBT evidence.
-- `clif_vitals`: last-vital fallback for death timing in the competing-risk model.
+- `clif_medication_admin_continuous`: vasopressor prevalence and cardiovascular SOFA support.
+- `clif_labs`: laboratory components of SOFA at 24, 48, and 72 hours.
+- `clif_vitals`: last-vital fallback for death timing in the competing-risk model plus MAP, SpO2, and weight inputs for SOFA.
 
 ## Privacy Boundary
 

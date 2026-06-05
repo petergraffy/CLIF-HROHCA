@@ -32,7 +32,9 @@ Recommended for 72-hour phenotype outputs:
 
 - `clif_respiratory_support`: IMV and extubation evidence.
 - `clif_patient_assessments`: GCS, RASS, AVPU, SAT, and SBT evidence.
-- `clif_vitals`: last-vital fallback for death timing in the competing-risk model.
+- `clif_medication_admin_continuous`: vasopressor prevalence and cardiovascular SOFA support.
+- `clif_labs`: laboratory components of SOFA at 24, 48, and 72 hours.
+- `clif_vitals`: last-vital fallback for death timing in the competing-risk model plus MAP, SpO2, and weight inputs for SOFA.
 
 ### Exposome Files
 
@@ -165,6 +167,7 @@ Core analytic outputs:
 - `SITE_ohca_icu_72h_consort_flow.csv`
 - `SITE_ohca_icu_72h_table1.csv`
 - `SITE_ohca_icu_72h_table2_by_phenotype.csv`
+- `SITE_ohca_icu_72h_gcs_hourly_by_phenotype.csv`
 - `SITE_ohca_icu_72h_phenotype_summary.csv`
 - `SITE_ohca_icu_72h_ohca_mechanism_summary.csv`
 - `SITE_ohca_icu_72h_phenotype_evidence_summary.csv`

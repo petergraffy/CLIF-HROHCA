@@ -135,6 +135,20 @@ fmt_median_iqr <- function(x) {
   )
 }
 
+fmt_mean_sd <- function(x) {
+  x <- suppressWarnings(as.numeric(x))
+  x <- x[is.finite(x)]
+  if (length(x) == 0L) return(NA_character_)
+  sprintf("%.1f (%.1f)", mean(x, na.rm = TRUE), stats::sd(x, na.rm = TRUE))
+}
+
+fmt_median_iqr_n <- function(x) {
+  x <- suppressWarnings(as.numeric(x))
+  x <- x[is.finite(x)]
+  if (length(x) == 0L) return(NA_character_)
+  sprintf("%s; n=%s", fmt_median_iqr(x), format(length(x), big.mark = ","))
+}
+
 fmt_yes <- function(x) {
   x <- ifelse(is.na(x), NA, as.integer(x %in% c(TRUE, 1L, "1", "TRUE", "true", "Yes", "yes")))
   fmt_n_pct(sum(x == 1L, na.rm = TRUE), sum(!is.na(x)))
@@ -168,6 +182,13 @@ add_table2_continuous <- function(df, section, characteristic, variable, phenoty
     bind_cols(as_tibble(as.list(vals)))
 }
 
+add_table2_mean_sd <- function(df, section, characteristic, variable, phenotype_levels) {
+  if (!variable %in% names(df)) return(tibble::tibble())
+  vals <- vapply(phenotype_levels, function(ph) fmt_mean_sd(df[[variable]][df$phenotype == ph]), character(1))
+  tibble::tibble(section = section, characteristic = characteristic, level = "") |>
+    bind_cols(as_tibble(as.list(vals)))
+}
+
 add_table2_binary <- function(df, section, characteristic, variable, phenotype_levels) {
   if (!variable %in% names(df)) return(tibble::tibble())
   vals <- vapply(phenotype_levels, function(ph) fmt_yes(df[[variable]][df$phenotype == ph]), character(1))
@@ -187,6 +208,277 @@ add_table2_categorical <- function(df, section, characteristic, variable, phenot
       bind_cols(as_tibble(as.list(vals)))
   })
   bind_rows(rows)
+}
+
+calc_pao2_from_spo2 <- function(spo2) {
+  s <- suppressWarnings(as.numeric(spo2)) / 100
+  out <- rep(NA_real_, length(s))
+  ok <- is.finite(s) & s > 0 & s < 1
+  a <- 11700 / ((1 / s[ok]) - 1)
+  b <- sqrt(50^3 + a^2)
+  out[ok] <- ((b + a)^(1 / 3)) - ((b - a)^(1 / 3))
+  out
+}
+
+ensure_numeric_cols <- function(df, cols) {
+  for (col in cols) {
+    if (!col %in% names(df)) df[[col]] <- NA_real_
+    df[[col]] <- suppressWarnings(as.numeric(df[[col]]))
+  }
+  df
+}
+
+standardize_vaso_dose <- function(med_category, med_dose, med_dose_unit, weight_kg) {
+  med_category <- stringr::str_to_lower(as.character(med_category))
+  med_dose_unit <- stringr::str_to_lower(as.character(med_dose_unit))
+  med_dose <- suppressWarnings(as.numeric(med_dose))
+  weight_kg <- dplyr::coalesce(suppressWarnings(as.numeric(weight_kg)), 80)
+  factor <- dplyr::case_when(
+    med_category %in% c("norepinephrine", "epinephrine", "phenylephrine", "dopamine", "dobutamine", "milrinone") &
+      med_dose_unit == "mcg/kg/min" ~ 1,
+    med_category %in% c("norepinephrine", "epinephrine", "phenylephrine", "dopamine", "dobutamine", "milrinone") &
+      med_dose_unit %in% c("mcg/kg/hr", "mcg/kg/hour") ~ 1 / 60,
+    med_category %in% c("norepinephrine", "epinephrine", "phenylephrine", "dopamine", "dobutamine", "milrinone") &
+      med_dose_unit %in% c("mg/kg/hr", "mg/kg/hour") ~ 1000 / 60,
+    med_category %in% c("norepinephrine", "epinephrine", "phenylephrine", "dopamine", "dobutamine", "milrinone") &
+      med_dose_unit == "mcg/min" ~ 1 / weight_kg,
+    med_category %in% c("norepinephrine", "epinephrine", "phenylephrine", "dopamine", "dobutamine", "milrinone") &
+      med_dose_unit %in% c("mg/hr", "mg/hour") ~ (1000 / 60) / weight_kg,
+    med_category == "vasopressin" & med_dose_unit == "units/min" ~ 1,
+    med_category == "vasopressin" & med_dose_unit %in% c("units/hr", "units/hour") ~ 1 / 60,
+    med_category == "vasopressin" & med_dose_unit == "milliunits/min" ~ 1 / 1000,
+    med_category == "vasopressin" & med_dose_unit %in% c("milliunits/hr", "milliunits/hour") ~ 1 / 1000 / 60,
+    TRUE ~ NA_real_
+  )
+  med_dose * factor
+}
+
+calculate_sofa_windows <- function(cohort_df, vitals_df, labs_df, support_df, med_admin_df, scores_df, windows = c(24, 48, 72)) {
+  ids <- unique(as.character(cohort_df$hospitalization_id))
+  base <- cohort_df |>
+    transmute(
+      hospitalization_id = as.character(.data$hospitalization_id),
+      first_icu_in = as_utc_datetime(.data$first_icu_in)
+    )
+
+  if (is.null(vitals_df) || nrow(vitals_df) == 0) vitals_df <- tibble::tibble()
+  if (is.null(labs_df) || nrow(labs_df) == 0) labs_df <- tibble::tibble()
+  if (is.null(support_df) || nrow(support_df) == 0) support_df <- tibble::tibble()
+  if (is.null(med_admin_df) || nrow(med_admin_df) == 0) med_admin_df <- tibble::tibble()
+  if (is.null(scores_df) || nrow(scores_df) == 0) scores_df <- tibble::tibble()
+
+  vitals_min <- if (all(c("hospitalization_id", "recorded_dttm", "vital_category", "vital_value") %in% names(vitals_df))) {
+    vitals_df |>
+      transmute(
+        hospitalization_id = as.character(.data$hospitalization_id),
+        recorded_dttm = as_utc_datetime(.data$recorded_dttm),
+        vital_category = stringr::str_to_lower(as.character(.data$vital_category)),
+        vital_value = suppressWarnings(as.numeric(.data$vital_value))
+      ) |>
+      filter(.data$hospitalization_id %in% ids, !is.na(.data$recorded_dttm))
+  } else tibble::tibble(hospitalization_id = character(), recorded_dttm = as.POSIXct(character(), tz = "UTC"), vital_category = character(), vital_value = numeric())
+
+  weights <- vitals_min |>
+    filter(.data$vital_category == "weight_kg", .data$vital_value > 10, .data$vital_value < 500) |>
+    group_by(.data$hospitalization_id) |>
+    summarise(weight_kg = median(.data$vital_value, na.rm = TRUE), .groups = "drop")
+
+  support_min <- if (all(c("hospitalization_id", "recorded_dttm") %in% names(support_df))) {
+    support_df |>
+      transmute(
+        hospitalization_id = as.character(.data$hospitalization_id),
+        recorded_dttm = as_utc_datetime(.data$recorded_dttm),
+        device_category = stringr::str_to_lower(tidyr::replace_na(as.character(.data$device_category), "")),
+        fio2_set = suppressWarnings(as.numeric(.data$fio2_set))
+      ) |>
+      filter(.data$hospitalization_id %in% ids, !is.na(.data$recorded_dttm))
+  } else tibble::tibble(hospitalization_id = character(), recorded_dttm = as.POSIXct(character(), tz = "UTC"), device_category = character(), fio2_set = numeric())
+
+  labs_min <- if (all(c("hospitalization_id", "lab_result_dttm", "lab_category", "lab_value_numeric") %in% names(labs_df))) {
+    labs_df |>
+      transmute(
+        hospitalization_id = as.character(.data$hospitalization_id),
+        lab_result_dttm = as_utc_datetime(.data$lab_result_dttm),
+        lab_category = stringr::str_to_lower(as.character(.data$lab_category)),
+        lab_value_numeric = suppressWarnings(as.numeric(.data$lab_value_numeric))
+      ) |>
+      filter(.data$hospitalization_id %in% ids, !is.na(.data$lab_result_dttm))
+  } else tibble::tibble(hospitalization_id = character(), lab_result_dttm = as.POSIXct(character(), tz = "UTC"), lab_category = character(), lab_value_numeric = numeric())
+
+  med_min <- if (all(c("hospitalization_id", "admin_dttm", "med_category", "med_group", "mar_action_group") %in% names(med_admin_df))) {
+    med_admin_df |>
+      transmute(
+        hospitalization_id = as.character(.data$hospitalization_id),
+        admin_dttm = as_utc_datetime(.data$admin_dttm),
+        med_category = stringr::str_to_lower(as.character(.data$med_category)),
+        med_group = stringr::str_to_lower(as.character(.data$med_group)),
+        mar_action_group = stringr::str_to_lower(as.character(.data$mar_action_group)),
+        med_dose = suppressWarnings(as.numeric(.data$med_dose)),
+        med_dose_unit = stringr::str_to_lower(as.character(.data$med_dose_unit))
+      ) |>
+      filter(.data$hospitalization_id %in% ids, !is.na(.data$admin_dttm))
+  } else tibble::tibble(hospitalization_id = character(), admin_dttm = as.POSIXct(character(), tz = "UTC"), med_category = character(), med_group = character(), mar_action_group = character(), med_dose = numeric(), med_dose_unit = character())
+
+  scores_min <- if (all(c("hospitalization_id", "recorded_dttm", "assessment_category", "numerical_value") %in% names(scores_df))) {
+    scores_df |>
+      transmute(
+        hospitalization_id = as.character(.data$hospitalization_id),
+        recorded_dttm = as_utc_datetime(.data$recorded_dttm),
+        assessment_category = stringr::str_to_lower(as.character(.data$assessment_category)),
+        numerical_value = suppressWarnings(as.numeric(.data$numerical_value))
+      ) |>
+      filter(.data$hospitalization_id %in% ids, !is.na(.data$recorded_dttm))
+  } else tibble::tibble(hospitalization_id = character(), recorded_dttm = as.POSIXct(character(), tz = "UTC"), assessment_category = character(), numerical_value = numeric())
+
+  dplyr::bind_rows(lapply(windows, function(window_hour) {
+    window_start <- max(0, window_hour - 24)
+    window_end <- window_hour
+    vitals_window <- vitals_min |>
+      inner_join(base, by = "hospitalization_id") |>
+      mutate(icu_hour = as.numeric(difftime(.data$recorded_dttm, .data$first_icu_in, units = "hours"))) |>
+      filter(.data$icu_hour >= window_start, .data$icu_hour <= window_end) |>
+      filter(
+        (.data$vital_category == "map" & .data$vital_value >= 20 & .data$vital_value <= 250) |
+          (.data$vital_category == "spo2" & .data$vital_value >= 50 & .data$vital_value <= 100)
+      ) |>
+      group_by(.data$hospitalization_id, .data$vital_category) |>
+      summarise(worst_val = min(.data$vital_value, na.rm = TRUE), .groups = "drop") |>
+      tidyr::pivot_wider(names_from = "vital_category", values_from = "worst_val") |>
+      mutate(pao2_imputed = calc_pao2_from_spo2(.data$spo2))
+
+    resp_window <- support_min |>
+      inner_join(base, by = "hospitalization_id") |>
+      mutate(
+        icu_hour = as.numeric(difftime(.data$recorded_dttm, .data$first_icu_in, units = "hours")),
+        fio2_std = dplyr::case_when(
+          is.na(.data$fio2_set) ~ NA_real_,
+          .data$fio2_set > 1 & .data$fio2_set <= 100 ~ .data$fio2_set / 100,
+          .data$fio2_set >= 0.21 & .data$fio2_set <= 1 ~ .data$fio2_set,
+          TRUE ~ NA_real_
+        )
+      ) |>
+      filter(.data$icu_hour >= window_start, .data$icu_hour <= window_end) |>
+      group_by(.data$hospitalization_id) |>
+      summarise(
+        fio2_max = suppressWarnings(max(.data$fio2_std, na.rm = TRUE)),
+        has_imv = any(stringr::str_detect(.data$device_category, "imv|vent"), na.rm = TRUE),
+        has_nippv = any(stringr::str_detect(.data$device_category, "nippv"), na.rm = TRUE),
+        has_cpap = any(stringr::str_detect(.data$device_category, "cpap"), na.rm = TRUE),
+        .groups = "drop"
+      ) |>
+      mutate(
+        fio2_max = ifelse(is.finite(.data$fio2_max), .data$fio2_max, NA_real_),
+        resp_support_max = dplyr::case_when(
+          .data$has_imv ~ "Vent",
+          .data$has_nippv ~ "NIPPV",
+          .data$has_cpap ~ "CPAP",
+          TRUE ~ "Other"
+        )
+      )
+
+    labs_window <- labs_min |>
+      inner_join(base, by = "hospitalization_id") |>
+      mutate(icu_hour = as.numeric(difftime(.data$lab_result_dttm, .data$first_icu_in, units = "hours"))) |>
+      filter(.data$icu_hour >= window_start, .data$icu_hour <= window_end) |>
+      filter(
+        (.data$lab_category == "creatinine" & .data$lab_value_numeric >= 0 & .data$lab_value_numeric <= 25) |
+          (.data$lab_category == "bilirubin_total" & .data$lab_value_numeric >= 0 & .data$lab_value_numeric <= 100) |
+          (.data$lab_category == "po2_arterial" & .data$lab_value_numeric >= 20 & .data$lab_value_numeric <= 800) |
+          (.data$lab_category == "platelet_count" & .data$lab_value_numeric >= 0 & .data$lab_value_numeric <= 3000)
+      )
+
+    labs_combined <- base |>
+      select("hospitalization_id") |>
+      left_join(labs_window |> filter(.data$lab_category == "creatinine") |> group_by(.data$hospitalization_id) |> summarise(creatinine = max(.data$lab_value_numeric, na.rm = TRUE), .groups = "drop"), by = "hospitalization_id") |>
+      left_join(labs_window |> filter(.data$lab_category == "bilirubin_total") |> group_by(.data$hospitalization_id) |> summarise(bilirubin_total = max(.data$lab_value_numeric, na.rm = TRUE), .groups = "drop"), by = "hospitalization_id") |>
+      left_join(labs_window |> filter(.data$lab_category == "po2_arterial") |> group_by(.data$hospitalization_id) |> summarise(po2_arterial = min(.data$lab_value_numeric, na.rm = TRUE), .groups = "drop"), by = "hospitalization_id") |>
+      left_join(labs_window |> filter(.data$lab_category == "platelet_count") |> group_by(.data$hospitalization_id) |> summarise(platelet_count = min(.data$lab_value_numeric, na.rm = TRUE), .groups = "drop"), by = "hospitalization_id") |>
+      mutate(across(c("creatinine", "bilirubin_total", "po2_arterial", "platelet_count"), ~ ifelse(is.infinite(.x), NA_real_, .x)))
+
+    gcs_window <- scores_min |>
+      inner_join(base, by = "hospitalization_id") |>
+      mutate(icu_hour = as.numeric(difftime(.data$recorded_dttm, .data$first_icu_in, units = "hours"))) |>
+      filter(
+        .data$icu_hour >= window_start, .data$icu_hour <= window_end,
+        .data$assessment_category == "gcs_total",
+        .data$numerical_value >= 3, .data$numerical_value <= 15
+      ) |>
+      group_by(.data$hospitalization_id) |>
+      summarise(min_gcs_score = min(.data$numerical_value, na.rm = TRUE), .groups = "drop") |>
+      mutate(min_gcs_score = ifelse(is.infinite(.data$min_gcs_score), NA_real_, .data$min_gcs_score))
+
+    meds_window <- med_min |>
+      inner_join(base, by = "hospitalization_id") |>
+      mutate(icu_hour = as.numeric(difftime(.data$admin_dttm, .data$first_icu_in, units = "hours"))) |>
+      filter(
+        .data$icu_hour >= window_start, .data$icu_hour <= window_end,
+        .data$mar_action_group == "administered",
+        .data$med_category %in% c("norepinephrine", "epinephrine", "phenylephrine", "vasopressin", "dopamine", "dobutamine", "milrinone"),
+        .data$med_dose > 0
+      ) |>
+      left_join(weights, by = "hospitalization_id") |>
+      mutate(dose_converted = standardize_vaso_dose(.data$med_category, .data$med_dose, .data$med_dose_unit, .data$weight_kg)) |>
+      filter(!is.na(.data$dose_converted)) |>
+      group_by(.data$hospitalization_id, .data$med_category) |>
+      summarise(max_dose = max(.data$dose_converted, na.rm = TRUE), .groups = "drop") |>
+      tidyr::pivot_wider(names_from = "med_category", values_from = "max_dose")
+
+    sofa_data <- base |>
+      select("hospitalization_id") |>
+      left_join(vitals_window, by = "hospitalization_id") |>
+      left_join(resp_window, by = "hospitalization_id") |>
+      left_join(labs_combined, by = "hospitalization_id") |>
+      left_join(gcs_window, by = "hospitalization_id") |>
+      left_join(meds_window, by = "hospitalization_id") |>
+      ensure_numeric_cols(c("map", "spo2", "pao2_imputed", "fio2_max", "po2_arterial", "platelet_count", "bilirubin_total", "creatinine", "min_gcs_score", "dopamine", "epinephrine", "norepinephrine", "dobutamine"))
+
+    sofa_data |>
+      mutate(
+        p_f = ifelse(!is.na(.data$po2_arterial) & !is.na(.data$fio2_max) & .data$fio2_max > 0, .data$po2_arterial / .data$fio2_max, NA_real_),
+        p_f_imputed = ifelse(!is.na(.data$pao2_imputed) & !is.na(.data$fio2_max) & .data$fio2_max > 0, .data$pao2_imputed / .data$fio2_max, NA_real_),
+        sofa_cv = dplyr::case_when(
+          .data$dopamine > 15 | .data$epinephrine > 0.1 | .data$norepinephrine > 0.1 ~ 4,
+          .data$dopamine > 5 | (.data$epinephrine > 0 & .data$epinephrine <= 0.1) | (.data$norepinephrine > 0 & .data$norepinephrine <= 0.1) ~ 3,
+          (.data$dopamine > 0 & .data$dopamine <= 5) | .data$dobutamine > 0 ~ 2,
+          .data$map < 70 ~ 1,
+          TRUE ~ 0
+        ),
+        sofa_coag = dplyr::case_when(.data$platelet_count < 20 ~ 4, .data$platelet_count < 50 ~ 3, .data$platelet_count < 100 ~ 2, .data$platelet_count < 150 ~ 1, TRUE ~ 0),
+        sofa_liver = dplyr::case_when(.data$bilirubin_total >= 12 ~ 4, .data$bilirubin_total >= 6 ~ 3, .data$bilirubin_total >= 2 ~ 2, .data$bilirubin_total >= 1.2 ~ 1, TRUE ~ 0),
+        sofa_renal = dplyr::case_when(.data$creatinine >= 5 ~ 4, .data$creatinine >= 3.5 ~ 3, .data$creatinine >= 2 ~ 2, .data$creatinine >= 1.2 ~ 1, TRUE ~ 0),
+        sofa_resp = dplyr::case_when(
+          !is.na(.data$p_f) & .data$p_f < 100 & .data$resp_support_max %in% c("Vent", "NIPPV", "CPAP") ~ 4,
+          !is.na(.data$p_f) & .data$p_f < 200 & .data$resp_support_max %in% c("Vent", "NIPPV", "CPAP") ~ 3,
+          !is.na(.data$p_f) & .data$p_f < 300 ~ 2,
+          !is.na(.data$p_f) & .data$p_f < 400 ~ 1,
+          !is.na(.data$p_f_imputed) & .data$p_f_imputed < 100 & .data$resp_support_max %in% c("Vent", "NIPPV", "CPAP") ~ 4,
+          !is.na(.data$p_f_imputed) & .data$p_f_imputed < 200 & .data$resp_support_max %in% c("Vent", "NIPPV", "CPAP") ~ 3,
+          !is.na(.data$p_f_imputed) & .data$p_f_imputed < 300 ~ 2,
+          !is.na(.data$p_f_imputed) & .data$p_f_imputed < 400 ~ 1,
+          TRUE ~ 0
+        ),
+        sofa_cns = dplyr::case_when(.data$min_gcs_score < 6 ~ 4, .data$min_gcs_score <= 9 ~ 3, .data$min_gcs_score <= 12 ~ 2, .data$min_gcs_score <= 14 ~ 1, TRUE ~ 0),
+        sofa_any_data = !is.na(.data$map) |
+          !is.na(.data$spo2) |
+          !is.na(.data$fio2_max) |
+          !is.na(.data$po2_arterial) |
+          !is.na(.data$platelet_count) |
+          !is.na(.data$bilirubin_total) |
+          !is.na(.data$creatinine) |
+          !is.na(.data$min_gcs_score) |
+          !is.na(.data$dopamine) |
+          !is.na(.data$epinephrine) |
+          !is.na(.data$norepinephrine) |
+          !is.na(.data$dobutamine),
+        sofa_total = ifelse(
+          .data$sofa_any_data,
+          .data$sofa_cv + .data$sofa_coag + .data$sofa_liver + .data$sofa_renal + .data$sofa_resp + .data$sofa_cns,
+          NA_real_
+        ),
+        sofa_window_hours = window_hour
+      ) |>
+      select("hospitalization_id", "sofa_window_hours", "sofa_total", "sofa_cv", "sofa_coag", "sofa_liver", "sofa_renal", "sofa_resp", "sofa_cns")
+  }))
 }
 
 fmt_or <- function(beta, se) {
@@ -960,9 +1252,20 @@ if (is.null(respiratory) || nrow(respiratory) == 0) {
 
 assessments <- read_clif_table(tables_path, file_type, "patient_assessments", required = FALSE)
 if (is.null(assessments) || nrow(assessments) == 0) {
-  neuro_summary <- tibble::tibble(hospitalization_id = cohort_ids)
+  neuro_summary <- tibble::tibble(
+    hospitalization_id = cohort_ids,
+    n_neuro_assessments_0_72h = 0L,
+    awake_gcs_total_ge13_24_72h = FALSE,
+    awake_gcs_motor_6_24_72h = FALSE,
+    awake_rass_ge_minus1_24_72h = FALSE,
+    any_avpu_alert_0_72h = FALSE,
+    any_avpu_unresponsive_0_72h = FALSE,
+    sat_pass_0_72h = FALSE,
+    sbt_pass_0_72h = FALSE
+  )
+  gcs_hourly_patient <- tibble::tibble(hospitalization_id = character(), icu_hour_bin = integer(), gcs_total_median_hour = numeric())
 } else {
-  neuro_summary <- assessments |>
+  assessment_long <- assessments |>
     transmute(
       hospitalization_id = as.character(.data$hospitalization_id),
       recorded_dttm = as_utc_datetime(.data$recorded_dttm),
@@ -977,7 +1280,9 @@ if (is.null(assessments) || nrow(assessments) == 0) {
       assessment_category_clean = stringr::str_to_lower(.data$assessment_category),
       icu_hour = as.numeric(difftime(.data$recorded_dttm, .data$first_icu_in, units = "hours"))
     ) |>
-    filter(.data$icu_hour >= 0, .data$icu_hour <= WINDOW_HOURS) |>
+    filter(.data$icu_hour >= 0, .data$icu_hour <= WINDOW_HOURS)
+
+  neuro_summary <- assessment_long |>
     group_by(.data$hospitalization_id) |>
     summarise(
       n_neuro_assessments_0_72h = sum(.data$assessment_category_clean %in% c("gcs_total", "gcs_motor", "rass", "avpu"), na.rm = TRUE),
@@ -990,6 +1295,9 @@ if (is.null(assessments) || nrow(assessments) == 0) {
       min_rass_0_72h = suppressWarnings(min(.data$numerical_value[.data$assessment_category_clean == "rass" & .data$numerical_value >= -5 & .data$numerical_value <= 4], na.rm = TRUE)),
       best_rass_24_72h = suppressWarnings(max(.data$numerical_value[.data$assessment_category_clean == "rass" & .data$icu_hour >= LATE_START_HOUR & .data$numerical_value >= -5 & .data$numerical_value <= 4], na.rm = TRUE)),
       last_rass_24_72h = safe_last(.data$numerical_value[.data$assessment_category_clean == "rass" & .data$icu_hour >= LATE_START_HOUR & .data$numerical_value >= -5 & .data$numerical_value <= 4]),
+      awake_gcs_total_ge13_24_72h = any(.data$assessment_category_clean == "gcs_total" & .data$icu_hour >= LATE_START_HOUR & .data$numerical_value >= 13 & .data$numerical_value <= 15, na.rm = TRUE),
+      awake_gcs_motor_6_24_72h = any(.data$assessment_category_clean == "gcs_motor" & .data$icu_hour >= LATE_START_HOUR & .data$numerical_value >= 6 & .data$numerical_value <= 6, na.rm = TRUE),
+      awake_rass_ge_minus1_24_72h = any(.data$assessment_category_clean == "rass" & .data$icu_hour >= LATE_START_HOUR & .data$numerical_value >= -1 & .data$numerical_value <= 4, na.rm = TRUE),
       any_avpu_alert_0_72h = any(.data$assessment_category_clean == "avpu" & stringr::str_detect(paste(.data$categorical_value, .data$text_value), "alert"), na.rm = TRUE),
       any_avpu_unresponsive_0_72h = any(.data$assessment_category_clean == "avpu" & stringr::str_detect(paste(.data$categorical_value, .data$text_value), "unresponsive|pain"), na.rm = TRUE),
       sat_pass_0_72h = any(.data$assessment_category_clean == "sat_delivery_pass_fail" & .data$categorical_value == "pass", na.rm = TRUE),
@@ -999,13 +1307,77 @@ if (is.null(assessments) || nrow(assessments) == 0) {
     mutate(
       across(c(min_gcs_0_72h, best_gcs_24_72h, min_gcs_motor_0_72h, best_gcs_motor_24_72h, min_rass_0_72h, best_rass_24_72h), ~ ifelse(is.infinite(.x), NA_real_, .x))
     )
+
+  gcs_hourly_patient <- assessment_long |>
+    filter(
+      .data$assessment_category_clean == "gcs_total",
+      .data$numerical_value >= 3,
+      .data$numerical_value <= 15
+    ) |>
+    mutate(icu_hour_bin = pmin(floor(.data$icu_hour), WINDOW_HOURS)) |>
+    group_by(.data$hospitalization_id, .data$icu_hour_bin) |>
+    summarise(gcs_total_median_hour = median(.data$numerical_value, na.rm = TRUE), .groups = "drop")
 }
+
+medication_continuous <- read_clif_table(
+  tables_path,
+  file_type,
+  "medication_admin_continuous",
+  columns = c("hospitalization_id", "admin_dttm", "med_category", "med_group", "mar_action_group", "med_dose", "med_dose_unit"),
+  required = FALSE
+)
+if (is.null(medication_continuous) || nrow(medication_continuous) == 0) {
+  vaso_summary <- tibble::tibble(hospitalization_id = cohort_ids, vaso_any_0_72h = 0L)
+} else {
+  vaso_summary <- medication_continuous |>
+    transmute(
+      hospitalization_id = as.character(.data$hospitalization_id),
+      admin_dttm = as_utc_datetime(.data$admin_dttm),
+      med_category = stringr::str_to_lower(as.character(.data$med_category)),
+      med_group = stringr::str_to_lower(as.character(.data$med_group)),
+      mar_action_group = stringr::str_to_lower(as.character(.data$mar_action_group))
+    ) |>
+    filter(.data$hospitalization_id %in% cohort_ids, !is.na(.data$admin_dttm)) |>
+    inner_join(cohort |> select("hospitalization_id", "first_icu_in"), by = "hospitalization_id") |>
+    mutate(
+      icu_hour = as.numeric(difftime(.data$admin_dttm, .data$first_icu_in, units = "hours")),
+      vasoactive = .data$med_group == "vasoactives" |
+        .data$med_category %in% c("norepinephrine", "epinephrine", "phenylephrine", "vasopressin", "dopamine", "angiotensin", "dobutamine", "milrinone")
+    ) |>
+    filter(.data$icu_hour >= 0, .data$icu_hour <= WINDOW_HOURS, .data$mar_action_group == "administered", .data$vasoactive) |>
+    distinct(.data$hospitalization_id) |>
+    mutate(vaso_any_0_72h = 1L) |>
+    right_join(tibble::tibble(hospitalization_id = cohort_ids), by = "hospitalization_id") |>
+    mutate(vaso_any_0_72h = tidyr::replace_na(.data$vaso_any_0_72h, 0L))
+}
+
+vitals_for_sofa <- read_clif_table(tables_path, file_type, "vitals", columns = c("hospitalization_id", "recorded_dttm", "vital_category", "vital_value"), required = FALSE)
+labs_for_sofa <- read_clif_table(tables_path, file_type, "labs", columns = c("hospitalization_id", "lab_result_dttm", "lab_category", "lab_value_numeric"), required = FALSE)
+sofa_long <- calculate_sofa_windows(
+  cohort_df = cohort,
+  vitals_df = vitals_for_sofa,
+  labs_df = labs_for_sofa,
+  support_df = respiratory,
+  med_admin_df = medication_continuous,
+  scores_df = assessments,
+  windows = c(24, 48, 72)
+)
+sofa_wide <- sofa_long |>
+  select("hospitalization_id", "sofa_window_hours", "sofa_total") |>
+  tidyr::pivot_wider(names_from = "sofa_window_hours", values_from = "sofa_total", names_prefix = "sofa_total_") |>
+  rename(
+    sofa_total_24h = "sofa_total_24",
+    sofa_total_48h = "sofa_total_48",
+    sofa_total_72h = "sofa_total_72"
+  )
 
 phenotype_cohort <- cohort |>
   left_join(ohca_mechanism, by = "hospitalization_id") |>
   left_join(neuro_dx, by = "hospitalization_id") |>
   left_join(resp_summary, by = "hospitalization_id") |>
   left_join(neuro_summary, by = "hospitalization_id") |>
+  left_join(vaso_summary, by = "hospitalization_id") |>
+  left_join(sofa_wide, by = "hospitalization_id") |>
   mutate(
     ohca_mechanism = tidyr::replace_na(.data$ohca_mechanism, "unclear_other"),
     anoxic_brain_injury_dx = yesno(.data$anoxic_brain_injury_dx),
@@ -1014,7 +1386,14 @@ phenotype_cohort <- cohort |>
     any_imv_48_72h = yesno(.data$any_imv_48_72h),
     any_non_imv_after_imv = yesno(.data$any_non_imv_after_imv),
     last_resp_imv_0_72h = yesno(.data$last_resp_imv_0_72h),
+    vaso_any_0_72h = tidyr::replace_na(.data$vaso_any_0_72h, 0L),
     n_neuro_assessments_0_72h = tidyr::replace_na(.data$n_neuro_assessments_0_72h, 0L),
+    awake_gcs_total_ge13_24_72h = yesno(.data$awake_gcs_total_ge13_24_72h),
+    awake_gcs_motor_6_24_72h = yesno(.data$awake_gcs_motor_6_24_72h),
+    awake_rass_ge_minus1_24_72h = yesno(.data$awake_rass_ge_minus1_24_72h),
+    any_avpu_alert_0_72h = yesno(.data$any_avpu_alert_0_72h),
+    sat_pass_0_72h = yesno(.data$sat_pass_0_72h),
+    sbt_pass_0_72h = yesno(.data$sbt_pass_0_72h),
     severe_neuro_signal = (
       (!is.na(.data$min_gcs_0_72h) & .data$min_gcs_0_72h <= 5) |
         (!is.na(.data$min_gcs_motor_0_72h) & .data$min_gcs_motor_0_72h <= 2) |
@@ -1052,6 +1431,14 @@ phenotype_cohort <- cohort |>
       "anoxic_brain_injury",
       "unclassified"
     )),
+    unclassified_reason = dplyr::case_when(
+      .data$phenotype != "unclassified" ~ NA_character_,
+      !.data$any_imv_0_72h & .data$n_neuro_assessments_0_72h == 0 ~ "Alive at 72h; no IMV in first 72h and no neurologic assessment evidence",
+      !.data$any_imv_0_72h ~ "Alive at 72h; no IMV in first 72h and no qualifying impaired/awake neurologic phenotype signal",
+      .data$extubated_by_72h & !.data$awake_signal ~ "Extubated/no ongoing IMV by 72h but no awake signal",
+      .data$awake_signal & !.data$extubated_by_72h & !.data$impaired_neuro_signal & !.data$any_imv_48_72h ~ "Awake signal without extubation and without limited-brain-function criteria",
+      TRUE ~ "Alive at 72h; structured criteria did not uniquely identify a primary phenotype"
+    ),
     anoxic_outcome = as.integer(.data$phenotype == "anoxic_brain_injury"),
     limited_vs_regained = dplyr::case_when(
       .data$phenotype == "limited_brain_function" ~ 1L,
@@ -1146,9 +1533,42 @@ phenotype_definitions <- tibble::tibble(
   mutate(site_name = site_name, .before = 1)
 
 primary_phenotype_levels <- c("regained_consciousness_extubated", "limited_brain_function", "anoxic_brain_injury")
+table2_phenotype_levels <- c(primary_phenotype_levels, "unclassified")
 phenotype_analysis_cohort <- phenotype_cohort |>
   filter(.data$phenotype %in% primary_phenotype_levels) |>
   mutate(phenotype = factor(as.character(.data$phenotype), levels = primary_phenotype_levels))
+
+phenotype_table_cohort <- phenotype_cohort |>
+  mutate(phenotype = factor(as.character(.data$phenotype), levels = table2_phenotype_levels))
+
+gcs_hourly_by_phenotype <- gcs_hourly_patient |>
+  left_join(phenotype_table_cohort |> select("hospitalization_id", "phenotype"), by = "hospitalization_id") |>
+  filter(!is.na(.data$phenotype)) |>
+  group_by(.data$phenotype, .data$icu_hour_bin) |>
+  summarise(
+    n_with_gcs = sum(!is.na(.data$gcs_total_median_hour)),
+    mean_gcs = mean(.data$gcs_total_median_hour, na.rm = TRUE),
+    median_gcs = median(.data$gcs_total_median_hour, na.rm = TRUE),
+    q1_gcs = stats::quantile(.data$gcs_total_median_hour, 0.25, na.rm = TRUE, names = FALSE),
+    q3_gcs = stats::quantile(.data$gcs_total_median_hour, 0.75, na.rm = TRUE, names = FALSE),
+    .groups = "drop"
+  ) |>
+  mutate(site_name = site_name, .before = 1)
+
+gcs_hourly_table_rows <- dplyr::bind_rows(lapply(seq(0, WINDOW_HOURS), function(hour_bin) {
+  vals <- vapply(table2_phenotype_levels, function(ph) {
+    fmt_median_iqr_n(gcs_hourly_patient$gcs_total_median_hour[
+      gcs_hourly_patient$hospitalization_id %in% phenotype_table_cohort$hospitalization_id[phenotype_table_cohort$phenotype == ph] &
+        gcs_hourly_patient$icu_hour_bin == hour_bin
+    ])
+  }, character(1))
+  tibble::tibble(
+    section = "Neurologic trajectory",
+    characteristic = "GCS total by ICU hour, median [IQR]",
+    level = sprintf("Hour %02d", hour_bin)
+  ) |>
+    bind_cols(as_tibble(as.list(vals)))
+}))
 
 ohca_summary_raw <- if (file.exists(OHCA_SUMMARY_PATH)) readr::read_csv(OHCA_SUMMARY_PATH, show_col_types = FALSE) else tibble::tibble()
 summary_value <- function(col) {
@@ -1216,30 +1636,46 @@ table1 <- bind_rows(
 
 table2 <- bind_rows(
   tibble::tibble(section = "Cohort", characteristic = "Phenotype cohort size", level = "") |>
-    bind_cols(as_tibble(as.list(setNames(vapply(primary_phenotype_levels, function(ph) format(sum(phenotype_analysis_cohort$phenotype == ph), big.mark = ","), character(1)), primary_phenotype_levels)))),
-  add_table2_continuous(phenotype_analysis_cohort, "Demographics", "Age, years, median [IQR]", "age_at_admission", primary_phenotype_levels),
-  add_table2_categorical(phenotype_analysis_cohort, "Demographics", "Sex", "sex_category", primary_phenotype_levels),
-  add_table2_categorical(phenotype_analysis_cohort, "Demographics", "Race", "race_category", primary_phenotype_levels),
-  add_table2_categorical(phenotype_analysis_cohort, "Demographics", "Ethnicity", "ethnicity_category", primary_phenotype_levels),
-  add_table2_continuous(phenotype_analysis_cohort, "Admission exposure", "Admission-day Tmax, C, median [IQR]", "tmax_mean_c", primary_phenotype_levels),
-  add_table2_continuous(phenotype_analysis_cohort, "Admission exposure", "Admission-day relative humidity, %, median [IQR]", "rmax_mean_pct", primary_phenotype_levels),
-  add_table2_categorical(phenotype_analysis_cohort, "OHCA mechanism", "POA diagnosis mechanism", "ohca_mechanism", primary_phenotype_levels),
-  add_table2_binary(phenotype_analysis_cohort, "72h phenotype evidence", "Any IMV in first 72h", "any_imv_0_72h", primary_phenotype_levels),
-  add_table2_binary(phenotype_analysis_cohort, "72h phenotype evidence", "IMV evidence at ICU hours 48-72", "any_imv_48_72h", primary_phenotype_levels),
-  add_table2_binary(phenotype_analysis_cohort, "72h phenotype evidence", "Extubated/no ongoing IMV by 72h", "extubated_by_72h", primary_phenotype_levels),
-  add_table2_binary(phenotype_analysis_cohort, "72h phenotype evidence", "Awake signal", "awake_signal", primary_phenotype_levels),
-  add_table2_binary(phenotype_analysis_cohort, "72h phenotype evidence", "Impaired neurologic signal", "impaired_neuro_signal", primary_phenotype_levels),
-  add_table2_binary(phenotype_analysis_cohort, "Outcome", "Hospital death", "hospital_death", primary_phenotype_levels),
-  add_table2_binary(phenotype_analysis_cohort, "Outcome", "Death within 72h", "death_within_72h", primary_phenotype_levels)
+    bind_cols(as_tibble(as.list(setNames(vapply(table2_phenotype_levels, function(ph) format(sum(phenotype_table_cohort$phenotype == ph), big.mark = ","), character(1)), table2_phenotype_levels)))),
+  add_table2_continuous(phenotype_table_cohort, "Demographics", "Age, years, median [IQR]", "age_at_admission", table2_phenotype_levels),
+  add_table2_categorical(phenotype_table_cohort, "Demographics", "Sex", "sex_category", table2_phenotype_levels),
+  add_table2_categorical(phenotype_table_cohort, "Demographics", "Race", "race_category", table2_phenotype_levels),
+  add_table2_categorical(phenotype_table_cohort, "Demographics", "Ethnicity", "ethnicity_category", table2_phenotype_levels),
+  add_table2_continuous(phenotype_table_cohort, "Admission exposure", "Admission-day Tmax, C, median [IQR]", "tmax_mean_c", table2_phenotype_levels),
+  add_table2_continuous(phenotype_table_cohort, "Admission exposure", "Admission-day relative humidity, %, median [IQR]", "rmax_mean_pct", table2_phenotype_levels),
+  add_table2_categorical(phenotype_table_cohort, "OHCA mechanism", "POA diagnosis mechanism", "ohca_mechanism", table2_phenotype_levels),
+  add_table2_binary(phenotype_table_cohort, "Organ support", "Any IMV in first 72h", "any_imv_0_72h", table2_phenotype_levels),
+  add_table2_binary(phenotype_table_cohort, "Organ support", "Any vasopressor in first 72h", "vaso_any_0_72h", table2_phenotype_levels),
+  add_table2_binary(phenotype_table_cohort, "Organ support", "IMV evidence at ICU hours 48-72", "any_imv_48_72h", table2_phenotype_levels),
+  add_table2_continuous(phenotype_table_cohort, "Organ dysfunction", "SOFA total at 24h, median [IQR]", "sofa_total_24h", table2_phenotype_levels),
+  add_table2_continuous(phenotype_table_cohort, "Organ dysfunction", "SOFA total at 48h, median [IQR]", "sofa_total_48h", table2_phenotype_levels),
+  add_table2_continuous(phenotype_table_cohort, "Organ dysfunction", "SOFA total at 72h, median [IQR]", "sofa_total_72h", table2_phenotype_levels),
+  add_table2_binary(phenotype_table_cohort, "72h phenotype evidence", "Extubated/no ongoing IMV by 72h", "extubated_by_72h", table2_phenotype_levels),
+  add_table2_binary(phenotype_table_cohort, "72h phenotype evidence", "Composite awake signal", "awake_signal", table2_phenotype_levels),
+  add_table2_binary(phenotype_table_cohort, "Awake signal components", "GCS total >=13 after ICU hour 24", "awake_gcs_total_ge13_24_72h", table2_phenotype_levels),
+  add_table2_binary(phenotype_table_cohort, "Awake signal components", "GCS motor = 6 after ICU hour 24", "awake_gcs_motor_6_24_72h", table2_phenotype_levels),
+  add_table2_binary(phenotype_table_cohort, "Awake signal components", "RASS >= -1 after ICU hour 24", "awake_rass_ge_minus1_24_72h", table2_phenotype_levels),
+  add_table2_binary(phenotype_table_cohort, "Awake signal components", "AVPU alert in first 72h", "any_avpu_alert_0_72h", table2_phenotype_levels),
+  add_table2_binary(phenotype_table_cohort, "Awake signal components", "SAT pass in first 72h", "sat_pass_0_72h", table2_phenotype_levels),
+  add_table2_binary(phenotype_table_cohort, "Awake signal components", "SBT pass in first 72h", "sbt_pass_0_72h", table2_phenotype_levels),
+  add_table2_binary(phenotype_table_cohort, "72h phenotype evidence", "Impaired neurologic signal", "impaired_neuro_signal", table2_phenotype_levels),
+  gcs_hourly_table_rows,
+  add_table2_binary(phenotype_table_cohort, "Outcome", "In-hospital mortality", "hospital_death", table2_phenotype_levels),
+  add_table2_binary(phenotype_table_cohort, "Outcome", "Death within 72h", "death_within_72h", table2_phenotype_levels),
+  add_table2_categorical(phenotype_table_cohort |> filter(.data$phenotype == "unclassified"), "Unclassified audit", "Reason unclassified", "unclassified_reason", table2_phenotype_levels)
 ) |>
   mutate(site_name = site_name, .before = 1)
 
 readr::write_csv(
   phenotype_cohort |> select(
     "hospitalization_id", "patient_id", "admission_date", "tmax_mean_c", "rmax_mean_pct", "phenotype",
+    "unclassified_reason",
     "ohca_mechanism", "ohca_mechanism_detail",
     "anoxic_brain_injury_dx", "brain_death_dx", "severe_neuro_signal", "awake_signal",
+    "awake_gcs_total_ge13_24_72h", "awake_gcs_motor_6_24_72h", "awake_rass_ge_minus1_24_72h",
+    "any_avpu_alert_0_72h", "sat_pass_0_72h", "sbt_pass_0_72h",
     "impaired_neuro_signal", "extubated_by_72h", "any_imv_0_72h", "any_imv_48_72h",
+    "vaso_any_0_72h", "sofa_total_24h", "sofa_total_48h", "sofa_total_72h",
     "min_gcs_0_72h", "best_gcs_24_72h", "last_gcs_24_72h", "best_rass_24_72h",
     "last_rass_24_72h", "hospital_death", "death_within_72h"
   ),
@@ -1249,6 +1685,7 @@ readr::write_csv(phenotype_summary, file.path(OUTPUT_DIR, "ohca_icu_72h_phenotyp
 readr::write_csv(consort_counts, file.path(OUTPUT_DIR, "ohca_icu_72h_consort_flow.csv"))
 readr::write_csv(table1, file.path(OUTPUT_DIR, "ohca_icu_72h_table1.csv"))
 readr::write_csv(table2, file.path(OUTPUT_DIR, "ohca_icu_72h_table2_by_phenotype.csv"))
+readr::write_csv(gcs_hourly_by_phenotype, file.path(OUTPUT_DIR, "ohca_icu_72h_gcs_hourly_by_phenotype.csv"))
 readr::write_csv(mechanism_summary, file.path(OUTPUT_DIR, "ohca_icu_72h_ohca_mechanism_summary.csv"))
 readr::write_csv(evidence_summary, file.path(OUTPUT_DIR, "ohca_icu_72h_phenotype_evidence_summary.csv"))
 readr::write_csv(phenotype_assignment_model, file.path(OUTPUT_DIR, "ohca_icu_72h_phenotype_assignment_model.csv"))

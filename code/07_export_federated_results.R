@@ -83,6 +83,7 @@ exports <- list(
   list(file.path(phenotype_dir, "ohca_icu_72h_consort_flow.csv"), "ohca_icu_72h_consort_flow"),
   list(file.path(phenotype_dir, "ohca_icu_72h_table1.csv"), "ohca_icu_72h_table1"),
   list(file.path(phenotype_dir, "ohca_icu_72h_table2_by_phenotype.csv"), "ohca_icu_72h_table2_by_phenotype"),
+  list(file.path(phenotype_dir, "ohca_icu_72h_gcs_hourly_by_phenotype.csv"), "ohca_icu_72h_gcs_hourly_by_phenotype"),
   list(file.path(phenotype_dir, "ohca_icu_72h_phenotype_summary.csv"), "ohca_icu_72h_phenotype_summary"),
   list(file.path(phenotype_dir, "ohca_icu_72h_ohca_mechanism_summary.csv"), "ohca_icu_72h_ohca_mechanism_summary"),
   list(file.path(phenotype_dir, "ohca_icu_72h_phenotype_evidence_summary.csv"), "ohca_icu_72h_phenotype_evidence_summary"),

@@ -1,48 +1,64 @@
-# R specific gitignores
+# R and editor-local files
 .Rprofile
 .Rhistory
-.Rprofile
 .Ruserdata
-.DS_Store
+.Rproj.user/
 *.Rproj
-.Rproj.user
-
-## ignore the renv initialization file
-initialize_renv.R
-
-## ignore filtered CLIF tables stored as Rdata
-*.RData
-
-#ignore source CLIF_ files 
-CLIF_*.parquet
-CLIF_*.csv
-CLIF_*.fst
-!reference/clif_hospital_geography.csv
-
-#ignore the identifier app
-CLIF_cohort_identifier*
-
-# ignore file used to initialize renv when creating the template
-initialize_renv.R
-
-# ignore filtered CLIF tables stored as Rdata
-*.RData
-
-# ignore pdf reports and rendered html
-*.pdf
-*.html
-
-# ignore large Daymet intermediate files
-output/intermediate/daymet/raw/
-*.nc
+.DS_Store
 
 # Local package/runtime caches
 .r-user-lib/
 .vendor-py/
 .mplconfig/
+renv/library/
+renv/staging/
 
-# Never commit generated analysis outputs or CLIF-derived intermediates.
-output/
+# Site-local configuration. Sites should copy config/config_template.json.
+config/config.json
+config/site_config.json
+config/*local*.json
+*.env
+.env
+
+# Site-local CLIF extracts and private data. These must not be committed.
+CLIF_*.parquet
+CLIF_*.csv
+CLIF_*.fst
+clif_*.parquet
+clif_*.csv
+clif_*.fst
+!reference/clif_hospital_geography.csv
+data/
+input/
+inputs/
+tables/
+clif/
+CLIF/
+*.RData
+*.rds
+*.RDS
+*.sas7bdat
+*.dta
+*.feather
+
+# Generated analysis outputs. Keep only the output folder README.
+output/**
+!output/
+!output/README.md
+
+# Runtime logs and rendered reports.
+logs/
+*.log
+*.pdf
+*.html
+*.docx
+*.pptx
+*.xlsx
+
+# Weather/data-build intermediates that are not needed for site execution.
+output/intermediate/daymet/raw/
+*.nc
+*.zip
 
 # Historical exploratory scripts and one-off data build utilities.
 archive_nonessential/
@@ -51,3 +67,8 @@ code/daymet/
 # Python/cache artifacts are not part of the site-runnable R workflow.
 __pycache__/
 *.pyc
+.pytest_cache/
+
+# Identifier apps and temporary utility artifacts.
+CLIF_cohort_identifier*
+initialize_renv.R
