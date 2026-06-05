@@ -22,17 +22,13 @@ repo_root <- normalizePath(file.path(dirname(get_script_path()), ".."), winslash
 scripts <- c(
   "00_install_or_restore_packages.R",
   "01_build_ohca_cohort.R",
-  "01b_ohca_ed_death_never_icu.R",
   "02_build_icu_exposure_series.R",
-  "03_descriptive_tables.R",
   "04_dlnm_primary_and_sensitivity.R",
   "04c_lag30_diagnostic_plots.R",
   "04d_ohca_icu_admission_rate_dlnm.R",
   "04b_case_crossover_dlnm.R",
-  "05_heat_related_vs_non_heat_related_table.R",
-  "09_supplementary_ohca_outcome_models.R",
-  "08_quality_checks.R",
-  "06_manuscript_tables_figures.R",
+  "10_ohca_icu_72h_phenotypes.R",
+  "11_ohca_icu_competing_risks.R",
   "07_export_federated_results.R"
 )
 

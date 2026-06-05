@@ -1,5 +1,6 @@
 required_packages <- c(
   "arrow",
+  "cmprsk",
   "dlnm",
   "dplyr",
   "ggplot2",
@@ -164,6 +165,102 @@ is_female <- function(x) {
 
 is_expired_discharge <- function(x) {
   stringr::str_detect(normalize_category(x), "expired|death|dead")
+}
+
+derive_poa_flag <- function(df, diagnosis_source = "") {
+  if ("poa_present" %in% names(df)) {
+    raw <- df$poa_present
+    numeric_flag <- suppressWarnings(as.integer(as.character(raw)))
+    char_flag <- stringr::str_to_upper(as.character(raw))
+    return(ifelse(!is.na(numeric_flag), numeric_flag == 1L, char_flag %in% c("Y", "YES", "TRUE", "T", "1")))
+  }
+  if (identical(diagnosis_source, "admission_diagnosis")) return(rep(TRUE, nrow(df)))
+  rep(FALSE, nrow(df))
+}
+
+derive_ohca_mechanism <- function(dx, hospitalization_ids = NULL, diagnosis_source = "") {
+  if (is.null(dx) || nrow(dx) == 0) {
+    out <- tibble::tibble(
+      hospitalization_id = as.character(hospitalization_ids %||% character()),
+      ohca_mechanism = "unclear_other",
+      ohca_mechanism_detail = NA_character_
+    )
+    return(out)
+  }
+
+  dx2 <- dx |>
+    dplyr::mutate(
+      hospitalization_id = as.character(.data$hospitalization_id),
+      diagnosis_code = if ("diagnosis_code" %in% names(dx)) as.character(.data$diagnosis_code) else NA_character_,
+      diagnosis_code_format = if ("diagnosis_code_format" %in% names(dx)) as.character(.data$diagnosis_code_format) else NA_character_,
+      diagnosis_code_clean = .data$diagnosis_code |>
+        tidyr::replace_na("") |>
+        as.character() |>
+        stringr::str_to_upper() |>
+        stringr::str_replace_all("[^A-Z0-9]", ""),
+      diagnosis_code_format = dplyr::if_else(
+        nchar(tidyr::replace_na(.data$diagnosis_code_format, "")) > 0,
+        stringr::str_to_upper(.data$diagnosis_code_format),
+        dplyr::if_else(stringr::str_detect(.data$diagnosis_code_clean, "^[A-Z]"), "ICD10", "ICD9")
+      ),
+      poa_flag = derive_poa_flag(dx, diagnosis_source),
+      icd10 = stringr::str_detect(.data$diagnosis_code_format, "10"),
+      icd9 = stringr::str_detect(.data$diagnosis_code_format, "9")
+    ) |>
+    dplyr::filter(.data$poa_flag, nzchar(.data$diagnosis_code_clean))
+
+  if (!is.null(hospitalization_ids)) {
+    dx2 <- dx2 |> dplyr::filter(.data$hospitalization_id %in% as.character(hospitalization_ids))
+  }
+
+  flags <- dx2 |>
+    dplyr::mutate(
+      mechanism = dplyr::case_when(
+        .data$icd10 & stringr::str_detect(.data$diagnosis_code_clean, "^(T36|T37|T38|T39|T40|T41|T42|T43|T44|T45|T46|T47|T48|T49|T50|T51|T52|T53|T54|T55|T56|T57|T58|T59|T60|T61|T62|T63|T64|T65)") ~ "overdose_toxicologic",
+        .data$icd9 & stringr::str_detect(.data$diagnosis_code_clean, "^(96[0-9]|97[0-9]|98[0-9])") ~ "overdose_toxicologic",
+        .data$icd10 & stringr::str_detect(.data$diagnosis_code_clean, "^(S|T0[7-9]|T1[0-4]|T2|T3|T6[6-9]|T7|T8|V|W|X[0-5]|Y0)") ~ "trauma",
+        .data$icd9 & stringr::str_detect(.data$diagnosis_code_clean, "^(8[0-9][0-9]|9[0-5][0-9])") ~ "trauma",
+        .data$icd10 & stringr::str_detect(.data$diagnosis_code_clean, "^(J|I26|T17|T71|W65|W66|W67|W68|W69|W70|W71|W72|W73|W74|X71)") ~ "respiratory_asphyxial",
+        .data$icd9 & stringr::str_detect(.data$diagnosis_code_clean, "^(4[6-9][0-9]|50[0-8]|4151|9941)") ~ "respiratory_asphyxial",
+        .data$icd10 & stringr::str_detect(.data$diagnosis_code_clean, "^(I2[0-5]|I3|I4|I50|I7[01])") ~ "cardiac",
+        .data$icd9 & stringr::str_detect(.data$diagnosis_code_clean, "^(41[0-4]|42[0-9]|428|441)") ~ "cardiac",
+        .data$icd10 & stringr::str_detect(.data$diagnosis_code_clean, "^(I6|G4[0-1]|G93)") ~ "neurologic",
+        .data$icd9 & stringr::str_detect(.data$diagnosis_code_clean, "^(43[0-8]|345|348)") ~ "neurologic",
+        .data$icd10 & stringr::str_detect(.data$diagnosis_code_clean, "^(A4[0-1]|R65|J1[0-8]|N39)") ~ "sepsis_infection",
+        .data$icd9 & stringr::str_detect(.data$diagnosis_code_clean, "^(038|9959|48[0-7]|5990)") ~ "sepsis_infection",
+        .data$icd10 & stringr::str_detect(.data$diagnosis_code_clean, "^(E1[0-4]|E8[3-7])") ~ "metabolic_electrolyte",
+        .data$icd9 & stringr::str_detect(.data$diagnosis_code_clean, "^(25[0-1]|27[5-6])") ~ "metabolic_electrolyte",
+        TRUE ~ NA_character_
+      )
+    ) |>
+    dplyr::filter(!is.na(.data$mechanism))
+
+  priority <- c(
+    "trauma",
+    "overdose_toxicologic",
+    "respiratory_asphyxial",
+    "cardiac",
+    "neurologic",
+    "sepsis_infection",
+    "metabolic_electrolyte"
+  )
+
+  mech <- flags |>
+    dplyr::mutate(priority = match(.data$mechanism, priority)) |>
+    dplyr::arrange(.data$hospitalization_id, .data$priority, .data$diagnosis_code_clean) |>
+    dplyr::group_by(.data$hospitalization_id) |>
+    dplyr::summarise(
+      ohca_mechanism = dplyr::first(.data$mechanism),
+      ohca_mechanism_detail = paste(sort(unique(paste0(.data$mechanism, ":", .data$diagnosis_code_clean))), collapse = " | "),
+      .groups = "drop"
+    )
+
+  all_ids <- tibble::tibble(hospitalization_id = as.character(hospitalization_ids %||% unique(dx2$hospitalization_id)))
+  all_ids |>
+    dplyr::left_join(mech, by = "hospitalization_id") |>
+    dplyr::mutate(
+      ohca_mechanism = tidyr::replace_na(.data$ohca_mechanism, "unclear_other")
+    )
 }
 
 normalize_county_fips <- function(x) {

@@ -8,338 +8,109 @@ get_script_path <- function() {
     ofiles <- vapply(sys.frames(), function(frame) if (is.null(frame$ofile)) NA_character_ else frame$ofile, character(1))
     ofiles <- stats::na.omit(ofiles)
     if (length(ofiles) > 0) return(normalizePath(tail(ofiles, 1), winslash = "/", mustWork = TRUE))
-    if (requireNamespace("rstudioapi", quietly = TRUE) && rstudioapi::isAvailable()) {
-      active_path <- rstudioapi::getActiveDocumentContext()$path
-      if (nzchar(active_path)) return(normalizePath(active_path, winslash = "/", mustWork = TRUE))
-    }
-    stop("Could not determine script path. Run with Rscript or source the script from RStudio.")
+    stop("Could not determine script path. Run with Rscript.")
   }
   normalizePath(sub(file_arg, "", match[[1]]), winslash = "/", mustWork = TRUE)
 }
 
 repo_root <- normalizePath(file.path(dirname(get_script_path()), ".."), winslash = "/", mustWork = TRUE)
+source(file.path(repo_root, "code", "00_project_functions.R"))
 
-ensure_user_library <- function() {
-  version_parts <- strsplit(as.character(getRversion()), "\\.")[[1]]
-  version_stub <- paste(version_parts[1], version_parts[2], sep = ".")
-  user_lib <- file.path(repo_root, ".r-user-lib", version_stub)
-  dir.create(user_lib, recursive = TRUE, showWarnings = FALSE)
-  .libPaths(c(user_lib, .libPaths()))
-}
-ensure_user_library()
+config <- load_project_config(repo_root)
+site_name <- validate_site_name(config, repo_root)
 
-config_path <- file.path(repo_root, "config", "config.json")
 output_dir <- file.path(repo_root, "output", "final", "federated_exports")
-figure_source_dir <- file.path(repo_root, "output", "final", "manuscript_figures")
 figure_export_dir <- file.path(output_dir, "figures")
 dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
 dir.create(figure_export_dir, recursive = TRUE, showWarnings = FALSE)
 
-config <- jsonlite::fromJSON(config_path)
-site_name <- config$site_name
+unlink(list.files(output_dir, pattern = "\\.csv$", full.names = TRUE, recursive = FALSE))
+unlink(file.path(output_dir, ".DS_Store"))
+unlink(list.files(figure_export_dir, full.names = TRUE, recursive = FALSE))
+dir.create(figure_export_dir, recursive = TRUE, showWarnings = FALSE)
 
-legacy_exports <- file.path(output_dir, paste0(site_name, "_ohca_ed_death_never_icu_summary.csv"))
-if (length(legacy_exports) > 0) unlink(legacy_exports[file.exists(legacy_exports)])
-
-results_path <- file.path(repo_root, "output", "final", "ohca_tmax", "manuscript", "manuscript_dlnm_results.csv")
-curves_path <- file.path(repo_root, "output", "final", "ohca_tmax", "manuscript", "manuscript_dlnm_curves.csv")
-reduced_coef_path <- file.path(repo_root, "output", "final", "ohca_tmax", "manuscript", "manuscript_dlnm_reduced_coefficients.csv")
-reduced_vcov_path <- file.path(repo_root, "output", "final", "ohca_tmax", "manuscript", "manuscript_dlnm_reduced_vcov.csv")
-lag_summaries_path <- file.path(repo_root, "output", "final", "ohca_tmax", "manuscript", "manuscript_dlnm_lag_summaries.csv")
-lag_specific_summaries_path <- file.path(repo_root, "output", "final", "ohca_tmax", "manuscript", "manuscript_dlnm_lag_specific_summaries.csv")
-lag30_diagnostic_summary_path <- file.path(repo_root, "output", "final", "ohca_tmax", "lag_diagnostics", "lag30_diagnostic_summary.csv")
-lag30_surface_path <- file.path(repo_root, "output", "final", "ohca_tmax", "lag_diagnostics", "lag30_temperature_lag_rr_surface.csv")
-lag30_hot_lag_path <- file.path(repo_root, "output", "final", "ohca_tmax", "lag_diagnostics", "lag30_hot_temperature_lag_specific_rr.csv")
-lag30_hot_cumulative_path <- file.path(repo_root, "output", "final", "ohca_tmax", "lag_diagnostics", "lag30_hot_temperature_cumulative_rr_by_lag.csv")
-lag30_temperature_distribution_path <- file.path(repo_root, "output", "final", "ohca_tmax", "lag_diagnostics", "lag30_temperature_distribution_source.csv")
-rate_dlnm_results_path <- file.path(repo_root, "output", "final", "ohca_tmax", "icu_admission_rate", "ohca_icu_admission_rate_dlnm_results.csv")
-rate_dlnm_curves_path <- file.path(repo_root, "output", "final", "ohca_tmax", "icu_admission_rate", "ohca_icu_admission_rate_dlnm_curves.csv")
-rate_dlnm_reduced_coef_path <- file.path(repo_root, "output", "final", "ohca_tmax", "icu_admission_rate", "ohca_icu_admission_rate_dlnm_reduced_coefficients.csv")
-rate_dlnm_reduced_vcov_path <- file.path(repo_root, "output", "final", "ohca_tmax", "icu_admission_rate", "ohca_icu_admission_rate_dlnm_reduced_vcov.csv")
-rate_dlnm_lag_summaries_path <- file.path(repo_root, "output", "final", "ohca_tmax", "icu_admission_rate", "ohca_icu_admission_rate_dlnm_lag_summaries.csv")
-rate_dlnm_lag_specific_summaries_path <- file.path(repo_root, "output", "final", "ohca_tmax", "icu_admission_rate", "ohca_icu_admission_rate_dlnm_lag_specific_summaries.csv")
-rate_dlnm_denominator_summary_path <- file.path(repo_root, "output", "final", "ohca_tmax", "icu_admission_rate", "ohca_icu_admission_rate_denominator_summary.csv")
-rate_daily_timeseries_path <- file.path(repo_root, "output", "final", "ohca_tmax", "icu_admission_rate", "ohca_icu_admission_rate_daily_timeseries.csv")
-case_crossover_results_path <- file.path(repo_root, "output", "final", "ohca_tmax", "case_crossover", "case_crossover_dlnm_results.csv")
-case_crossover_curves_path <- file.path(repo_root, "output", "final", "ohca_tmax", "case_crossover", "case_crossover_dlnm_curves.csv")
-case_crossover_reduced_coef_path <- file.path(repo_root, "output", "final", "ohca_tmax", "case_crossover", "case_crossover_dlnm_reduced_coefficients.csv")
-case_crossover_reduced_vcov_path <- file.path(repo_root, "output", "final", "ohca_tmax", "case_crossover", "case_crossover_dlnm_reduced_vcov.csv")
-case_crossover_lag_summaries_path <- file.path(repo_root, "output", "final", "ohca_tmax", "case_crossover", "case_crossover_dlnm_lag_summaries.csv")
-case_crossover_lag_specific_summaries_path <- file.path(repo_root, "output", "final", "ohca_tmax", "case_crossover", "case_crossover_dlnm_lag_specific_summaries.csv")
-case_crossover_referent_summary_path <- file.path(repo_root, "output", "final", "ohca_tmax", "case_crossover", "case_crossover_referent_set_summary.csv")
-table1_path <- file.path(repo_root, "output", "final", "descriptive", "table1_ohca_cohort_characteristics.csv")
-outcomes_path <- file.path(repo_root, "output", "final", "descriptive", "ohca_outcomes_summary.csv")
-heat_table2_path <- file.path(repo_root, "output", "final", "descriptive", "table2_heat_related_vs_non_heat_related_ohca.csv")
-heat_table2_all_path <- file.path(repo_root, "output", "final", "descriptive", "table2_heat_related_vs_non_heat_related_ohca_all_definitions.csv")
-heat90_table2_path <- file.path(repo_root, "output", "final", "descriptive", "table2_heat90_vs_non_heat90_ohca.csv")
-heat_thresholds_path <- file.path(repo_root, "output", "final", "descriptive", "heat_related_ohca_thresholds.csv")
-heat_summary_path <- file.path(repo_root, "output", "final", "descriptive", "heat_related_vs_non_heat_related_ohca_outcomes.csv")
-heat_discharge_path <- file.path(repo_root, "output", "final", "descriptive", "heat_related_vs_non_heat_related_discharge_categories.csv")
-heat_hourly_vitals_path <- file.path(repo_root, "output", "final", "descriptive", "heat_related_ohca_hourly_vital_trajectories.csv")
-heat_hourly_labs_path <- file.path(repo_root, "output", "final", "descriptive", "heat_related_ohca_hourly_lab_trajectories.csv")
-heat_hourly_support_path <- file.path(repo_root, "output", "final", "descriptive", "heat_related_ohca_hourly_support_trajectories.csv")
-heat_hourly_vitals_smoothed_path <- file.path(repo_root, "output", "final", "descriptive", "heat_related_ohca_hourly_vital_trajectories_smoothed.csv")
-heat_hourly_labs_smoothed_path <- file.path(repo_root, "output", "final", "descriptive", "heat_related_ohca_hourly_lab_trajectories_smoothed.csv")
-heat_hourly_support_smoothed_path <- file.path(repo_root, "output", "final", "descriptive", "heat_related_ohca_hourly_support_trajectories_smoothed.csv")
-heat_hourly_cumulative_path <- file.path(repo_root, "output", "final", "descriptive", "heat_related_ohca_hourly_cumulative_incidence.csv")
-heat_renal_marker_path <- file.path(repo_root, "output", "final", "descriptive", "heat_related_ohca_renal_metabolic_marker_summary.csv")
-heat_crrt_window_path <- file.path(repo_root, "output", "final", "descriptive", "heat_related_ohca_crrt_window_summary.csv")
-all_year_heat_table2_path <- file.path(repo_root, "output", "final", "descriptive", "all_year_table2_heat_related_vs_non_heat_related_ohca.csv")
-all_year_heat_table2_all_path <- file.path(repo_root, "output", "final", "descriptive", "all_year_table2_heat_related_vs_non_heat_related_ohca_all_definitions.csv")
-all_year_heat90_table2_path <- file.path(repo_root, "output", "final", "descriptive", "all_year_table2_heat90_vs_non_heat90_ohca.csv")
-all_year_heat_thresholds_path <- file.path(repo_root, "output", "final", "descriptive", "all_year_heat_related_ohca_thresholds.csv")
-all_year_heat_summary_path <- file.path(repo_root, "output", "final", "descriptive", "all_year_heat_related_vs_non_heat_related_ohca_outcomes.csv")
-all_year_heat_discharge_path <- file.path(repo_root, "output", "final", "descriptive", "all_year_heat_related_vs_non_heat_related_discharge_categories.csv")
-all_year_heat_hourly_vitals_path <- file.path(repo_root, "output", "final", "descriptive", "all_year_heat_related_ohca_hourly_vital_trajectories.csv")
-all_year_heat_hourly_labs_path <- file.path(repo_root, "output", "final", "descriptive", "all_year_heat_related_ohca_hourly_lab_trajectories.csv")
-all_year_heat_hourly_support_path <- file.path(repo_root, "output", "final", "descriptive", "all_year_heat_related_ohca_hourly_support_trajectories.csv")
-all_year_heat_hourly_vitals_smoothed_path <- file.path(repo_root, "output", "final", "descriptive", "all_year_heat_related_ohca_hourly_vital_trajectories_smoothed.csv")
-all_year_heat_hourly_labs_smoothed_path <- file.path(repo_root, "output", "final", "descriptive", "all_year_heat_related_ohca_hourly_lab_trajectories_smoothed.csv")
-all_year_heat_hourly_support_smoothed_path <- file.path(repo_root, "output", "final", "descriptive", "all_year_heat_related_ohca_hourly_support_trajectories_smoothed.csv")
-all_year_heat_hourly_cumulative_path <- file.path(repo_root, "output", "final", "descriptive", "all_year_heat_related_ohca_hourly_cumulative_incidence.csv")
-all_year_heat_renal_marker_path <- file.path(repo_root, "output", "final", "descriptive", "all_year_heat_related_ohca_renal_metabolic_marker_summary.csv")
-all_year_heat_crrt_window_path <- file.path(repo_root, "output", "final", "descriptive", "all_year_heat_related_ohca_crrt_window_summary.csv")
-time_sensitivity_path <- file.path(repo_root, "output", "final", "ohca_tmax", "manuscript", "manuscript_dlnm_time_adjustment_sensitivity.csv")
-adverse_models_path <- file.path(repo_root, "output", "final", "ohca_outcomes", "ohca_heat_adverse_outcome_models.csv")
-continuous_models_path <- file.path(repo_root, "output", "final", "ohca_outcomes", "ohca_heat_continuous_outcome_models.csv")
-pollution_binary_models_path <- file.path(repo_root, "output", "final", "ohca_outcomes", "ohca_pollution_12m_binary_outcome_models.csv")
-pollution_continuous_models_path <- file.path(repo_root, "output", "final", "ohca_outcomes", "ohca_pollution_12m_continuous_outcome_models.csv")
-adverse_rates_path <- file.path(repo_root, "output", "final", "ohca_outcomes", "ohca_heat_adverse_outcome_rates.csv")
-cohort_flow_path <- file.path(repo_root, "output", "final", "quality_checks", "cohort_flow.csv")
-cohort_flow_figure_path <- file.path(repo_root, "output", "final", "quality_checks", "cohort_flow_diagram.png")
-denominator_audit_path <- file.path(repo_root, "output", "final", "quality_checks", "model_denominator_audit.csv")
-icu_timing_path <- file.path(repo_root, "output", "final", "quality_checks", "ohca_admission_to_icu_timing_summary.csv")
-icu_timing_bins_path <- file.path(repo_root, "output", "final", "quality_checks", "ohca_admission_to_icu_timing_bins.csv")
-care_pathway_path <- file.path(repo_root, "output", "final", "quality_checks", "ohca_pre_icu_care_pathway_summary.csv")
-first_location_path <- file.path(repo_root, "output", "final", "quality_checks", "ohca_first_location_summary.csv")
-ed_death_never_icu_path <- file.path(repo_root, "output", "final", "descriptive", "ohca_ed_only_death_never_icu_summary.csv")
-ed_death_never_icu_pathway_path <- file.path(repo_root, "output", "final", "descriptive", "ohca_ed_only_death_never_icu_pathway_audit.csv")
-
-results <- read.csv(results_path, stringsAsFactors = FALSE)
-results$site_name <- site_name
-results <- results[, c("site_name", setdiff(names(results), "site_name"))]
-
-write.csv(results, file.path(output_dir, paste0(site_name, "_dlnm_site_estimates.csv")), row.names = FALSE)
-
-if (file.exists(curves_path)) {
-  curves <- read.csv(curves_path, stringsAsFactors = FALSE)
-  curves$site_name <- site_name
-  curves <- curves[, c("site_name", setdiff(names(curves), "site_name"))]
-  write.csv(curves, file.path(output_dir, paste0(site_name, "_dlnm_curves.csv")), row.names = FALSE)
+copy_csv <- function(path, suffix) {
+  if (!file.exists(path)) return(FALSE)
+  dat <- read.csv(path, stringsAsFactors = FALSE)
+  dat$site_name <- site_name
+  dat <- dat[, c("site_name", setdiff(names(dat), "site_name"))]
+  write.csv(dat, file.path(output_dir, paste0(site_name, "_", suffix, ".csv")), row.names = FALSE)
+  TRUE
 }
 
-if (file.exists(reduced_coef_path)) {
-  reduced_coef <- read.csv(reduced_coef_path, stringsAsFactors = FALSE)
-  reduced_coef$site_name <- site_name
-  reduced_coef <- reduced_coef[, c("site_name", setdiff(names(reduced_coef), "site_name"))]
-  write.csv(reduced_coef, file.path(output_dir, paste0(site_name, "_dlnm_reduced_coefficients.csv")), row.names = FALSE)
+copy_figure <- function(path) {
+  if (!file.exists(path)) return(FALSE)
+  file.copy(path, file.path(figure_export_dir, paste0(site_name, "_", basename(path))), overwrite = TRUE)
 }
 
-if (file.exists(reduced_vcov_path)) {
-  reduced_vcov <- read.csv(reduced_vcov_path, stringsAsFactors = FALSE)
-  reduced_vcov$site_name <- site_name
-  reduced_vcov <- reduced_vcov[, c("site_name", setdiff(names(reduced_vcov), "site_name"))]
-  write.csv(reduced_vcov, file.path(output_dir, paste0(site_name, "_dlnm_reduced_vcov.csv")), row.names = FALSE)
-}
+manuscript_dir <- file.path(repo_root, "output", "final", "ohca_tmax", "manuscript")
+lag_diag_dir <- file.path(repo_root, "output", "final", "ohca_tmax", "lag_diagnostics")
+rate_dir <- file.path(repo_root, "output", "final", "ohca_tmax", "icu_admission_rate")
+case_crossover_dir <- file.path(repo_root, "output", "final", "ohca_tmax", "case_crossover")
+phenotype_dir <- file.path(repo_root, "output", "final", "ohca_icu_phenotypes")
+figure_dir <- file.path(repo_root, "output", "final", "manuscript_figures")
 
-if (file.exists(lag_summaries_path)) {
-  lag_summaries <- read.csv(lag_summaries_path, stringsAsFactors = FALSE)
-  lag_summaries$site_name <- site_name
-  lag_summaries <- lag_summaries[, c("site_name", setdiff(names(lag_summaries), "site_name"))]
-  write.csv(lag_summaries, file.path(output_dir, paste0(site_name, "_dlnm_lag_summaries.csv")), row.names = FALSE)
-}
+exports <- list(
+  list(file.path(manuscript_dir, "manuscript_dlnm_results.csv"), "dlnm_site_estimates"),
+  list(file.path(manuscript_dir, "manuscript_dlnm_curves.csv"), "dlnm_curves"),
+  list(file.path(manuscript_dir, "manuscript_dlnm_lag_summaries.csv"), "dlnm_lag_summaries"),
+  list(file.path(manuscript_dir, "manuscript_dlnm_lag_specific_summaries.csv"), "dlnm_lag_specific_summaries"),
+  list(file.path(manuscript_dir, "manuscript_dlnm_reduced_coefficients.csv"), "dlnm_reduced_coefficients"),
+  list(file.path(manuscript_dir, "manuscript_dlnm_reduced_vcov.csv"), "dlnm_reduced_vcov"),
+  list(file.path(manuscript_dir, "manuscript_dlnm_time_adjustment_sensitivity.csv"), "dlnm_time_sensitivity"),
+  list(file.path(manuscript_dir, "manuscript_dlnm_time_adjustment_lag_summaries.csv"), "dlnm_time_sensitivity_lag_summaries"),
+  list(file.path(manuscript_dir, "manuscript_dlnm_time_adjustment_lag_specific_summaries.csv"), "dlnm_time_sensitivity_lag_specific_summaries"),
+  list(file.path(lag_diag_dir, "lag30_diagnostic_summary.csv"), "lag30_diagnostic_summary"),
+  list(file.path(lag_diag_dir, "lag30_temperature_lag_rr_surface.csv"), "lag30_temperature_lag_rr_surface"),
+  list(file.path(lag_diag_dir, "lag30_hot_temperature_lag_specific_rr.csv"), "lag30_hot_temperature_lag_specific_rr"),
+  list(file.path(lag_diag_dir, "lag30_hot_temperature_cumulative_rr_by_lag.csv"), "lag30_hot_temperature_cumulative_rr_by_lag"),
+  list(file.path(lag_diag_dir, "lag30_temperature_distribution_source.csv"), "lag30_temperature_distribution"),
+  list(file.path(rate_dir, "ohca_icu_admission_rate_dlnm_results.csv"), "ohca_icu_admission_rate_dlnm_site_estimates"),
+  list(file.path(rate_dir, "ohca_icu_admission_rate_dlnm_curves.csv"), "ohca_icu_admission_rate_dlnm_curves"),
+  list(file.path(rate_dir, "ohca_icu_admission_rate_dlnm_lag_summaries.csv"), "ohca_icu_admission_rate_dlnm_lag_summaries"),
+  list(file.path(rate_dir, "ohca_icu_admission_rate_dlnm_lag_specific_summaries.csv"), "ohca_icu_admission_rate_dlnm_lag_specific_summaries"),
+  list(file.path(rate_dir, "ohca_icu_admission_rate_dlnm_reduced_coefficients.csv"), "ohca_icu_admission_rate_dlnm_reduced_coefficients"),
+  list(file.path(rate_dir, "ohca_icu_admission_rate_dlnm_reduced_vcov.csv"), "ohca_icu_admission_rate_dlnm_reduced_vcov"),
+  list(file.path(rate_dir, "ohca_icu_admission_rate_denominator_summary.csv"), "ohca_icu_admission_rate_denominator_summary"),
+  list(file.path(rate_dir, "ohca_icu_admission_rate_daily_timeseries.csv"), "ohca_icu_admission_rate_daily_timeseries"),
+  list(file.path(case_crossover_dir, "case_crossover_dlnm_results.csv"), "case_crossover_dlnm_site_estimates"),
+  list(file.path(case_crossover_dir, "case_crossover_dlnm_curves.csv"), "case_crossover_dlnm_curves"),
+  list(file.path(case_crossover_dir, "case_crossover_dlnm_lag_summaries.csv"), "case_crossover_dlnm_lag_summaries"),
+  list(file.path(case_crossover_dir, "case_crossover_dlnm_lag_specific_summaries.csv"), "case_crossover_dlnm_lag_specific_summaries"),
+  list(file.path(case_crossover_dir, "case_crossover_dlnm_reduced_coefficients.csv"), "case_crossover_dlnm_reduced_coefficients"),
+  list(file.path(case_crossover_dir, "case_crossover_dlnm_reduced_vcov.csv"), "case_crossover_dlnm_reduced_vcov"),
+  list(file.path(case_crossover_dir, "case_crossover_referent_set_summary.csv"), "case_crossover_referent_set_summary"),
+  list(file.path(phenotype_dir, "ohca_icu_72h_consort_flow.csv"), "ohca_icu_72h_consort_flow"),
+  list(file.path(phenotype_dir, "ohca_icu_72h_table1.csv"), "ohca_icu_72h_table1"),
+  list(file.path(phenotype_dir, "ohca_icu_72h_table2_by_phenotype.csv"), "ohca_icu_72h_table2_by_phenotype"),
+  list(file.path(phenotype_dir, "ohca_icu_72h_phenotype_summary.csv"), "ohca_icu_72h_phenotype_summary"),
+  list(file.path(phenotype_dir, "ohca_icu_72h_ohca_mechanism_summary.csv"), "ohca_icu_72h_ohca_mechanism_summary"),
+  list(file.path(phenotype_dir, "ohca_icu_72h_phenotype_evidence_summary.csv"), "ohca_icu_72h_phenotype_evidence_summary"),
+  list(file.path(phenotype_dir, "ohca_icu_72h_phenotype_definitions.csv"), "ohca_icu_72h_phenotype_definitions"),
+  list(file.path(phenotype_dir, "ohca_icu_72h_phenotype_assignment_model.csv"), "ohca_icu_72h_phenotype_assignment_model"),
+  list(file.path(phenotype_dir, "ohca_icu_72h_phenotype_assignment_temperature_curve.csv"), "ohca_icu_72h_phenotype_assignment_temperature_curve"),
+  list(file.path(phenotype_dir, "ohca_icu_72h_phenotype_assignment_model_mechanism_adjusted.csv"), "ohca_icu_72h_phenotype_assignment_model_mechanism_adjusted"),
+  list(file.path(phenotype_dir, "ohca_icu_72h_phenotype_assignment_temperature_curve_mechanism_adjusted.csv"), "ohca_icu_72h_phenotype_assignment_temperature_curve_mechanism_adjusted"),
+  list(file.path(phenotype_dir, "ohca_icu_competing_risk_awake_extubated_72h_summary.csv"), "ohca_icu_competing_risk_awake_extubated_72h_summary"),
+  list(file.path(phenotype_dir, "ohca_icu_competing_risk_death_source_summary.csv"), "ohca_icu_competing_risk_death_source_summary"),
+  list(file.path(phenotype_dir, "ohca_icu_competing_risk_awake_extubated_72h_ohca_mechanism_summary.csv"), "ohca_icu_competing_risk_awake_extubated_72h_ohca_mechanism_summary"),
+  list(file.path(phenotype_dir, "ohca_icu_competing_risk_awake_extubated_72h_fine_gray_models.csv"), "ohca_icu_competing_risk_awake_extubated_72h_fine_gray_models")
+)
 
-if (file.exists(lag_specific_summaries_path)) {
-  lag_specific_summaries <- read.csv(lag_specific_summaries_path, stringsAsFactors = FALSE)
-  lag_specific_summaries$site_name <- site_name
-  lag_specific_summaries <- lag_specific_summaries[, c("site_name", setdiff(names(lag_specific_summaries), "site_name"))]
-  write.csv(lag_specific_summaries, file.path(output_dir, paste0(site_name, "_dlnm_lag_specific_summaries.csv")), row.names = FALSE)
-}
+invisible(lapply(exports, function(item) copy_csv(item[[1]], item[[2]])))
 
-for (item in list(
-  list(path = lag30_diagnostic_summary_path, suffix = "lag30_diagnostic_summary"),
-  list(path = lag30_surface_path, suffix = "lag30_temperature_lag_rr_surface"),
-  list(path = lag30_hot_lag_path, suffix = "lag30_hot_temperature_lag_specific_rr"),
-  list(path = lag30_hot_cumulative_path, suffix = "lag30_hot_temperature_cumulative_rr_by_lag"),
-  list(path = lag30_temperature_distribution_path, suffix = "lag30_temperature_distribution")
-)) {
-  if (file.exists(item$path)) {
-    dat <- read.csv(item$path, stringsAsFactors = FALSE)
-    dat$site_name <- site_name
-    dat <- dat[, c("site_name", setdiff(names(dat), "site_name"))]
-    write.csv(dat, file.path(output_dir, paste0(site_name, "_", item$suffix, ".csv")), row.names = FALSE)
-  }
-}
+figure_paths <- file.path(figure_dir, c(
+  "figure_primary_dlnm_curve.png",
+  "figure_regional_dlnm_mrt_curves.png",
+  "figure_all_year_dlnm_mrt_median_comparison.png",
+  "figure_lag30_temperature_distribution.png",
+  "figure_lag30_temperature_lag_rr_surface.png",
+  "figure_lag30_hot_temperature_lag_specific_rr.png",
+  "figure_lag30_hot_temperature_cumulative_rr_by_lag.png",
+  "figure_ohca_icu_admission_rate_temperature_timeseries.png",
+  "figure_ohca_icu_72h_phenotype_counts.png",
+  "figure_ohca_icu_72h_phenotype_temperature_curves.png"
+))
+invisible(lapply(figure_paths, copy_figure))
 
-for (item in list(
-  list(path = rate_dlnm_results_path, suffix = "ohca_icu_admission_rate_dlnm_site_estimates"),
-  list(path = rate_dlnm_curves_path, suffix = "ohca_icu_admission_rate_dlnm_curves"),
-  list(path = rate_dlnm_reduced_coef_path, suffix = "ohca_icu_admission_rate_dlnm_reduced_coefficients"),
-  list(path = rate_dlnm_reduced_vcov_path, suffix = "ohca_icu_admission_rate_dlnm_reduced_vcov"),
-  list(path = rate_dlnm_lag_summaries_path, suffix = "ohca_icu_admission_rate_dlnm_lag_summaries"),
-  list(path = rate_dlnm_lag_specific_summaries_path, suffix = "ohca_icu_admission_rate_dlnm_lag_specific_summaries"),
-  list(path = rate_dlnm_denominator_summary_path, suffix = "ohca_icu_admission_rate_denominator_summary"),
-  list(path = rate_daily_timeseries_path, suffix = "ohca_icu_admission_rate_daily_timeseries")
-)) {
-  if (file.exists(item$path)) {
-    dat <- read.csv(item$path, stringsAsFactors = FALSE)
-    dat$site_name <- site_name
-    dat <- dat[, c("site_name", setdiff(names(dat), "site_name"))]
-    write.csv(dat, file.path(output_dir, paste0(site_name, "_", item$suffix, ".csv")), row.names = FALSE)
-  }
-}
-
-for (item in list(
-  list(path = case_crossover_results_path, suffix = "case_crossover_dlnm_site_estimates"),
-  list(path = case_crossover_curves_path, suffix = "case_crossover_dlnm_curves"),
-  list(path = case_crossover_reduced_coef_path, suffix = "case_crossover_dlnm_reduced_coefficients"),
-  list(path = case_crossover_reduced_vcov_path, suffix = "case_crossover_dlnm_reduced_vcov"),
-  list(path = case_crossover_lag_summaries_path, suffix = "case_crossover_dlnm_lag_summaries"),
-  list(path = case_crossover_lag_specific_summaries_path, suffix = "case_crossover_dlnm_lag_specific_summaries"),
-  list(path = case_crossover_referent_summary_path, suffix = "case_crossover_referent_set_summary")
-)) {
-  if (file.exists(item$path)) {
-    dat <- read.csv(item$path, stringsAsFactors = FALSE)
-    dat$site_name <- site_name
-    dat <- dat[, c("site_name", setdiff(names(dat), "site_name"))]
-    write.csv(dat, file.path(output_dir, paste0(site_name, "_", item$suffix, ".csv")), row.names = FALSE)
-  }
-}
-
-if (file.exists(table1_path)) {
-  table1 <- read.csv(table1_path, stringsAsFactors = FALSE)
-  table1$site_name <- site_name
-  write.csv(table1, file.path(output_dir, paste0(site_name, "_table1.csv")), row.names = FALSE)
-}
-
-if (file.exists(outcomes_path)) {
-  outcomes <- read.csv(outcomes_path, stringsAsFactors = FALSE)
-  outcomes$site_name <- site_name
-  write.csv(outcomes, file.path(output_dir, paste0(site_name, "_outcomes.csv")), row.names = FALSE)
-}
-
-if (file.exists(heat_table2_path)) {
-  heat_table2 <- read.csv(heat_table2_path, stringsAsFactors = FALSE)
-  heat_table2$site_name <- site_name
-  write.csv(heat_table2, file.path(output_dir, paste0(site_name, "_heat_related_vs_non_heat_related_table.csv")), row.names = FALSE)
-}
-
-for (item in list(
-  list(path = heat_table2_all_path, suffix = "heat_related_vs_non_heat_related_table_all_definitions"),
-  list(path = heat90_table2_path, suffix = "heat90_vs_non_heat90_table"),
-  list(path = heat_thresholds_path, suffix = "heat_related_ohca_thresholds"),
-  list(path = heat_summary_path, suffix = "heat_related_vs_non_heat_related_outcomes"),
-  list(path = heat_discharge_path, suffix = "heat_related_vs_non_heat_related_discharge_categories"),
-  list(path = heat_hourly_vitals_path, suffix = "heat_related_hourly_vital_trajectories"),
-  list(path = heat_hourly_labs_path, suffix = "heat_related_hourly_lab_trajectories"),
-  list(path = heat_hourly_support_path, suffix = "heat_related_hourly_support_trajectories"),
-  list(path = heat_hourly_vitals_smoothed_path, suffix = "heat_related_hourly_vital_trajectories_smoothed"),
-  list(path = heat_hourly_labs_smoothed_path, suffix = "heat_related_hourly_lab_trajectories_smoothed"),
-  list(path = heat_hourly_support_smoothed_path, suffix = "heat_related_hourly_support_trajectories_smoothed"),
-  list(path = heat_hourly_cumulative_path, suffix = "heat_related_hourly_cumulative_incidence"),
-  list(path = heat_renal_marker_path, suffix = "heat_related_renal_metabolic_marker_summary"),
-  list(path = heat_crrt_window_path, suffix = "heat_related_crrt_window_summary"),
-  list(path = all_year_heat_table2_path, suffix = "all_year_heat_related_vs_non_heat_related_table"),
-  list(path = all_year_heat_table2_all_path, suffix = "all_year_heat_related_vs_non_heat_related_table_all_definitions"),
-  list(path = all_year_heat90_table2_path, suffix = "all_year_heat90_vs_non_heat90_table"),
-  list(path = all_year_heat_thresholds_path, suffix = "all_year_heat_related_ohca_thresholds"),
-  list(path = all_year_heat_summary_path, suffix = "all_year_heat_related_vs_non_heat_related_outcomes"),
-  list(path = all_year_heat_discharge_path, suffix = "all_year_heat_related_vs_non_heat_related_discharge_categories"),
-  list(path = all_year_heat_hourly_vitals_path, suffix = "all_year_heat_related_hourly_vital_trajectories"),
-  list(path = all_year_heat_hourly_labs_path, suffix = "all_year_heat_related_hourly_lab_trajectories"),
-  list(path = all_year_heat_hourly_support_path, suffix = "all_year_heat_related_hourly_support_trajectories"),
-  list(path = all_year_heat_hourly_vitals_smoothed_path, suffix = "all_year_heat_related_hourly_vital_trajectories_smoothed"),
-  list(path = all_year_heat_hourly_labs_smoothed_path, suffix = "all_year_heat_related_hourly_lab_trajectories_smoothed"),
-  list(path = all_year_heat_hourly_support_smoothed_path, suffix = "all_year_heat_related_hourly_support_trajectories_smoothed"),
-  list(path = all_year_heat_hourly_cumulative_path, suffix = "all_year_heat_related_hourly_cumulative_incidence"),
-  list(path = all_year_heat_renal_marker_path, suffix = "all_year_heat_related_renal_metabolic_marker_summary"),
-  list(path = all_year_heat_crrt_window_path, suffix = "all_year_heat_related_crrt_window_summary")
-)) {
-  if (file.exists(item$path)) {
-    dat <- read.csv(item$path, stringsAsFactors = FALSE)
-    dat$site_name <- site_name
-    write.csv(dat, file.path(output_dir, paste0(site_name, "_", item$suffix, ".csv")), row.names = FALSE)
-  }
-}
-
-if (file.exists(time_sensitivity_path)) {
-  time_sensitivity <- read.csv(time_sensitivity_path, stringsAsFactors = FALSE)
-  time_sensitivity$site_name <- site_name
-  write.csv(time_sensitivity, file.path(output_dir, paste0(site_name, "_dlnm_time_sensitivity.csv")), row.names = FALSE)
-}
-
-if (file.exists(adverse_models_path)) {
-  adverse_models <- read.csv(adverse_models_path, stringsAsFactors = FALSE)
-  adverse_models$site_name <- site_name
-  write.csv(adverse_models, file.path(output_dir, paste0(site_name, "_adverse_outcome_models.csv")), row.names = FALSE)
-}
-
-if (file.exists(continuous_models_path)) {
-  continuous_models <- read.csv(continuous_models_path, stringsAsFactors = FALSE)
-  continuous_models$site_name <- site_name
-  write.csv(continuous_models, file.path(output_dir, paste0(site_name, "_continuous_outcome_models.csv")), row.names = FALSE)
-}
-
-if (file.exists(pollution_binary_models_path)) {
-  pollution_binary_models <- read.csv(pollution_binary_models_path, stringsAsFactors = FALSE)
-  pollution_binary_models$site_name <- site_name
-  write.csv(pollution_binary_models, file.path(output_dir, paste0(site_name, "_pollution_12m_binary_outcome_models.csv")), row.names = FALSE)
-}
-
-if (file.exists(pollution_continuous_models_path)) {
-  pollution_continuous_models <- read.csv(pollution_continuous_models_path, stringsAsFactors = FALSE)
-  pollution_continuous_models$site_name <- site_name
-  write.csv(pollution_continuous_models, file.path(output_dir, paste0(site_name, "_pollution_12m_continuous_outcome_models.csv")), row.names = FALSE)
-}
-
-if (file.exists(adverse_rates_path)) {
-  adverse_rates <- read.csv(adverse_rates_path, stringsAsFactors = FALSE)
-  adverse_rates$site_name <- site_name
-  write.csv(adverse_rates, file.path(output_dir, paste0(site_name, "_adverse_outcome_rates.csv")), row.names = FALSE)
-}
-
-for (item in list(
-  list(path = cohort_flow_path, suffix = "cohort_flow"),
-  list(path = denominator_audit_path, suffix = "denominator_audit"),
-  list(path = icu_timing_path, suffix = "icu_timing_summary"),
-  list(path = icu_timing_bins_path, suffix = "icu_timing_bins"),
-  list(path = care_pathway_path, suffix = "care_pathway_summary"),
-  list(path = first_location_path, suffix = "first_location_summary"),
-  list(path = ed_death_never_icu_path, suffix = "ohca_ed_only_death_never_icu_summary"),
-  list(path = ed_death_never_icu_pathway_path, suffix = "ohca_ed_only_death_never_icu_pathway_audit")
-)) {
-  if (file.exists(item$path)) {
-    dat <- read.csv(item$path, stringsAsFactors = FALSE)
-    dat$site_name <- site_name
-    write.csv(dat, file.path(output_dir, paste0(site_name, "_", item$suffix, ".csv")), row.names = FALSE)
-  }
-}
-
-if (dir.exists(figure_source_dir)) {
-  old_site_figures <- list.files(
-    figure_export_dir,
-    pattern = paste0("^", site_name, "_.*\\.png$"),
-    full.names = TRUE
-  )
-  if (length(old_site_figures) > 0) unlink(old_site_figures)
-
-  figure_files <- list.files(
-    figure_source_dir,
-    pattern = "\\.png$",
-    full.names = TRUE
-  )
-  for (figure_path in figure_files) {
-    dest <- file.path(figure_export_dir, paste0(site_name, "_", basename(figure_path)))
-    file.copy(figure_path, dest, overwrite = TRUE)
-  }
-}
-
-if (file.exists(cohort_flow_figure_path)) {
-  file.copy(
-    cohort_flow_figure_path,
-    file.path(figure_export_dir, paste0(site_name, "_figure_cohort_flow_diagram.png")),
-    overwrite = TRUE
-  )
-}
-
-message("Wrote federated site export files to ", output_dir)
+message("Wrote DLNM and 72-hour phenotype federated exports to ", output_dir)

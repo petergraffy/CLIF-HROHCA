@@ -637,24 +637,33 @@ reduced_vcov_rows[["overall_mrt"]] <- overall_mrt$reduced_vcov
 lag_summary_rows[["overall_mrt"]] <- overall_mrt$lag_summary
 lag_specific_rows[["overall_mrt"]] <- overall_mrt$lag_specific
 
-time_sensitivity_results <- list()
+time_sensitivity_fits <- list()
 for (time_df_candidate in c(3L, 4L, 6L)) {
-  time_sensitivity_results[[paste0("time_df_", time_df_candidate)]] <- run_dlnm_spec(
+  time_sensitivity_fits[[paste0("time_df_", time_df_candidate)]] <- run_dlnm_spec(
     model_df,
     "Overall",
     model = paste0("sensitivity_time_df_", time_df_candidate, "_per_year"),
     reference = "median",
-    time_df_per_year = time_df_candidate
+    time_df_per_year = time_df_candidate,
+    return_curve = TRUE
   )
 }
-time_sensitivity_results[["without_day_of_week"]] <- run_dlnm_spec(
+time_sensitivity_fits[["without_day_of_week"]] <- run_dlnm_spec(
   model_df,
   "Overall",
   model = "sensitivity_without_day_of_week",
   reference = "median",
-  include_dow = FALSE
+  include_dow = FALSE,
+  return_curve = TRUE
 )
-time_sensitivity_df <- do.call(rbind, time_sensitivity_results)
+bind_nonnull <- function(rows) {
+  rows <- rows[!vapply(rows, is.null, logical(1))]
+  if (length(rows) == 0L) return(data.frame())
+  do.call(rbind, rows)
+}
+time_sensitivity_df <- bind_nonnull(lapply(time_sensitivity_fits, `[[`, "result"))
+time_sensitivity_lag_summary_df <- bind_nonnull(lapply(time_sensitivity_fits, `[[`, "lag_summary"))
+time_sensitivity_lag_specific_df <- bind_nonnull(lapply(time_sensitivity_fits, `[[`, "lag_specific"))
 
 for (nm in c("male","female","age_lt65","age_ge65","race_black","race_nonblack")) {
   counts_df <- strata_counts[[nm]]
@@ -737,6 +746,8 @@ reduced_vcov_df$analysis_period <- ANALYSIS_PERIOD_LABEL
 lag_summary_df$analysis_period <- ANALYSIS_PERIOD_LABEL
 lag_specific_df$analysis_period <- ANALYSIS_PERIOD_LABEL
 time_sensitivity_df$analysis_period <- ANALYSIS_PERIOD_LABEL
+if (nrow(time_sensitivity_lag_summary_df) > 0) time_sensitivity_lag_summary_df$analysis_period <- ANALYSIS_PERIOD_LABEL
+if (nrow(time_sensitivity_lag_specific_df) > 0) time_sensitivity_lag_specific_df$analysis_period <- ANALYSIS_PERIOD_LABEL
 write.csv(results_df, file.path(output_dir, "manuscript_dlnm_results.csv"), row.names = FALSE)
 write.csv(curves_df, file.path(output_dir, "manuscript_dlnm_curves.csv"), row.names = FALSE)
 write.csv(reduced_coef_df, file.path(output_dir, "manuscript_dlnm_reduced_coefficients.csv"), row.names = FALSE)
@@ -744,4 +755,10 @@ write.csv(reduced_vcov_df, file.path(output_dir, "manuscript_dlnm_reduced_vcov.c
 write.csv(lag_summary_df, file.path(output_dir, "manuscript_dlnm_lag_summaries.csv"), row.names = FALSE)
 write.csv(lag_specific_df, file.path(output_dir, "manuscript_dlnm_lag_specific_summaries.csv"), row.names = FALSE)
 write.csv(time_sensitivity_df, file.path(output_dir, "manuscript_dlnm_time_adjustment_sensitivity.csv"), row.names = FALSE)
+if (nrow(time_sensitivity_lag_summary_df) > 0) {
+  write.csv(time_sensitivity_lag_summary_df, file.path(output_dir, "manuscript_dlnm_time_adjustment_lag_summaries.csv"), row.names = FALSE)
+}
+if (nrow(time_sensitivity_lag_specific_df) > 0) {
+  write.csv(time_sensitivity_lag_specific_df, file.path(output_dir, "manuscript_dlnm_time_adjustment_lag_specific_summaries.csv"), row.names = FALSE)
+}
 message("Wrote manuscript-style ", ANALYSIS_PERIOD_LABEL, " DLNM results to ", output_dir)

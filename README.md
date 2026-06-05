@@ -6,20 +6,16 @@ Each site runs the same R workflow locally against its own CLIF 2.1 tables. Site
 
 ## Study Aim
 
-Estimate whether county-level heat exposure is associated with daily OHCA ICU admissions and characterize whether heat-related OHCA differs clinically from non-heat-related OHCA among patients who reach the ICU.
+Estimate whether county-level heat exposure is associated with daily OHCA ICU admissions and, among OHCA patients admitted to the ICU, whether admission-day temperature and humidity are associated with 72-hour neurologic/recovery phenotypes.
 
 The workflow produces:
 
 - Daily OHCA ICU admission counts linked to county-level Tmax, relative humidity, NO2, and PM2.5.
 - Primary and sensitivity distributed lag nonlinear models (DLNMs) for heat and OHCA ICU admissions.
 - Site-level DLNM curves, reduced coefficient/vector covariance exports, and figure PNGs.
-- OHCA cohort descriptive tables and outcomes.
-- Heat-related versus non-heat-related OHCA phenotype tables using 95th percentile heat as primary and 90th percentile heat as sensitivity.
-- All-year sensitivity versions of heat-related versus non-heat-related OHCA phenotype tables and trajectories.
-- ICU-hour trajectories for vitals, labs, organ support, and cumulative incidence.
-- Renal/metabolic phenotype summaries, including CRRT initiation windows and early creatinine/BUN/electrolyte/lactate summaries.
-- Supplementary OHCA outcome models for same-day heat and 12-month pollution exposures.
-- CONSORT-style aggregate cohort flow counts and a site-level cohort flow diagram.
+- Structured 72-hour ICU OHCA phenotypes.
+- Multinomial phenotype-assignment models and 72-hour competing-risk models using admission-day temperature and humidity.
+- Sensitivity versions of the 72-hour models additionally adjusted for POA diagnosis mechanism.
 
 ## Required Inputs
 
@@ -32,13 +28,11 @@ Required:
 - `clif_adt`
 - `clif_hospital_diagnosis` or `clif_admission_diagnosis`
 
-Recommended for phenotype/outcome outputs:
+Recommended for 72-hour phenotype outputs:
 
-- `clif_respiratory_support`: IMV trajectories and duration.
-- `clif_medication_admin_continuous`: vasopressor trajectories.
-- `clif_labs`: renal/metabolic and lab trajectories.
-- `clif_vitals`: vital sign trajectories.
-- `clif_crrt_therapy`: CRRT initiation and trajectory outputs.
+- `clif_respiratory_support`: IMV and extubation evidence.
+- `clif_patient_assessments`: GCS, RASS, AVPU, SAT, and SBT evidence.
+- `clif_vitals`: last-vital fallback for death timing in the competing-risk model.
 
 ### Exposome Files
 
@@ -146,6 +140,8 @@ Core analytic outputs:
 - `SITE_dlnm_reduced_coefficients.csv`
 - `SITE_dlnm_reduced_vcov.csv`
 - `SITE_dlnm_time_sensitivity.csv`
+- `SITE_dlnm_time_sensitivity_lag_summaries.csv`
+- `SITE_dlnm_time_sensitivity_lag_specific_summaries.csv`
 - `SITE_lag30_diagnostic_summary.csv`
 - `SITE_lag30_temperature_lag_rr_surface.csv`
 - `SITE_lag30_hot_temperature_lag_specific_rr.csv`
@@ -166,41 +162,21 @@ Core analytic outputs:
 - `SITE_case_crossover_dlnm_reduced_coefficients.csv`
 - `SITE_case_crossover_dlnm_reduced_vcov.csv`
 - `SITE_case_crossover_referent_set_summary.csv`
-- `SITE_table1.csv`
-- `SITE_outcomes.csv`
-- `SITE_cohort_flow.csv`
-- `SITE_ohca_ed_only_death_never_icu_summary.csv`
-- `SITE_ohca_ed_only_death_never_icu_pathway_audit.csv`
-
-Heat-related OHCA phenotype outputs:
-
-- `SITE_heat_related_vs_non_heat_related_table.csv`
-- `SITE_heat_related_vs_non_heat_related_table_all_definitions.csv`
-- `SITE_heat90_vs_non_heat90_table.csv`
-- `SITE_heat_related_hourly_vital_trajectories.csv`
-- `SITE_heat_related_hourly_lab_trajectories.csv`
-- `SITE_heat_related_hourly_support_trajectories.csv`
-- `SITE_heat_related_hourly_vital_trajectories_smoothed.csv`
-- `SITE_heat_related_hourly_lab_trajectories_smoothed.csv`
-- `SITE_heat_related_hourly_support_trajectories_smoothed.csv`
-- `SITE_heat_related_hourly_cumulative_incidence.csv`
-- `SITE_heat_related_renal_metabolic_marker_summary.csv`
-- `SITE_heat_related_crrt_window_summary.csv`
-
-All-year heat-related OHCA sensitivity outputs use the same naming pattern with an `all_year_` prefix, for example:
-
-- `SITE_all_year_heat_related_vs_non_heat_related_table.csv`
-- `SITE_all_year_heat_related_hourly_vital_trajectories_smoothed.csv`
-- `SITE_all_year_heat_related_hourly_cumulative_incidence.csv`
-- `SITE_all_year_heat_related_crrt_window_summary.csv`
-
-Outcome and sensitivity outputs:
-
-- `SITE_adverse_outcome_models.csv`
-- `SITE_continuous_outcome_models.csv`
-- `SITE_pollution_12m_binary_outcome_models.csv`
-- `SITE_pollution_12m_continuous_outcome_models.csv`
-- `SITE_adverse_outcome_rates.csv`
+- `SITE_ohca_icu_72h_consort_flow.csv`
+- `SITE_ohca_icu_72h_table1.csv`
+- `SITE_ohca_icu_72h_table2_by_phenotype.csv`
+- `SITE_ohca_icu_72h_phenotype_summary.csv`
+- `SITE_ohca_icu_72h_ohca_mechanism_summary.csv`
+- `SITE_ohca_icu_72h_phenotype_evidence_summary.csv`
+- `SITE_ohca_icu_72h_phenotype_definitions.csv`
+- `SITE_ohca_icu_72h_phenotype_assignment_model.csv`
+- `SITE_ohca_icu_72h_phenotype_assignment_temperature_curve.csv`
+- `SITE_ohca_icu_72h_phenotype_assignment_model_mechanism_adjusted.csv`
+- `SITE_ohca_icu_72h_phenotype_assignment_temperature_curve_mechanism_adjusted.csv`
+- `SITE_ohca_icu_competing_risk_awake_extubated_72h_summary.csv`
+- `SITE_ohca_icu_competing_risk_death_source_summary.csv`
+- `SITE_ohca_icu_competing_risk_awake_extubated_72h_ohca_mechanism_summary.csv`
+- `SITE_ohca_icu_competing_risk_awake_extubated_72h_fine_gray_models.csv`
 
 Visual QC figures:
 
@@ -208,14 +184,13 @@ Visual QC figures:
 output/final/federated_exports/figures/SITE_figure_*.png
 ```
 
-These include site-level DLNM plots, lag-30 diagnostic plots, trajectory plots, cumulative incidence plots, CRRT-window plots, renal/metabolic marker plots, and the cohort flow diagram.
+These include site-level DLNM plots, lag-30 diagnostic plots, the OHCA rate time-series plot, and 72-hour phenotype plots.
 
 ## Troubleshooting
 
 - If the workflow cannot find CLIF tables, confirm `config/config.json` and `file_type`.
 - If `site_name` fails, confirm it exactly matches `reference/clif_hospital_geography.csv`.
-- If optional tables are missing, the workflow should skip or partially populate the corresponding phenotype outputs.
-- If figure PNGs look duplicated across heat90 and heat95, rerun the latest code; plot filtering was corrected to keep heat definitions separate.
+- If optional respiratory-support or patient-assessment tables are missing, the 72-hour phenotype evidence may be partially populated.
 
 ## Privacy Boundary
 
