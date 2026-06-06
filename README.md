@@ -4,7 +4,7 @@ Federated CLIF analysis of heat exposure and out-of-hospital cardiac arrest (OHC
 
 Each site runs the same R workflow locally against its own CLIF 2.1 tables. Sites should share only the aggregate outputs in `output/final/federated_exports/`.
 
-The top-level `code/` scripts are the site-facing pipeline. Pooling, manuscript figures, and other aggregate post-processing helpers are kept separately in `code/post_processing/`; historical scripts from earlier analytic versions are retained in `code/archive/`.
+The top-level `code/` scripts are the site-facing pipeline. Current pooling, manuscript figures, and other aggregate post-processing helpers are kept separately in `code/post_processing/`.
 
 ## Study Aim
 
@@ -18,6 +18,7 @@ The workflow produces:
 - Structured 72-hour ICU OHCA phenotypes.
 - Multinomial phenotype-assignment models and 72-hour competing-risk models using admission-day temperature and humidity.
 - Sensitivity versions of the 72-hour models additionally adjusted for POA diagnosis mechanism.
+- Sensitivity versions of the 72-hour models using 0-1, 0-3, and 0-5 day mean temperature and humidity exposure windows.
 
 ## Required Inputs
 
@@ -171,6 +172,8 @@ Core analytic outputs:
 - `SITE_case_crossover_dlnm_reduced_coefficients.csv`
 - `SITE_case_crossover_dlnm_reduced_vcov.csv`
 - `SITE_case_crossover_referent_set_summary.csv`
+- `SITE_ohca_ed_only_death_never_icu_summary.csv`
+- `SITE_ohca_ed_only_death_never_icu_pathway_audit.csv`
 - `SITE_ohca_icu_72h_consort_flow.csv`
 - `SITE_ohca_icu_72h_table1.csv`
 - `SITE_ohca_icu_72h_table2_by_phenotype.csv`
@@ -178,6 +181,8 @@ Core analytic outputs:
 - `SITE_ohca_icu_72h_phenotype_summary.csv`
 - `SITE_ohca_icu_72h_ohca_mechanism_summary.csv`
 - `SITE_ohca_icu_72h_phenotype_evidence_summary.csv`
+- `SITE_ohca_icu_72h_admission_temperature_distribution_summary.csv`
+- `SITE_ohca_icu_72h_admission_temperature_density.csv`
 - `SITE_ohca_icu_72h_phenotype_definitions.csv`
 - `SITE_ohca_icu_72h_phenotype_assignment_model.csv`
 - `SITE_ohca_icu_72h_phenotype_assignment_temperature_curve.csv`
@@ -187,13 +192,20 @@ Core analytic outputs:
 - `SITE_ohca_icu_72h_phenotype_assignment_temperature_curve_mechanism_adjusted.csv`
 - `SITE_ohca_icu_72h_phenotype_assignment_coefficients_mechanism_adjusted.csv`
 - `SITE_ohca_icu_72h_phenotype_assignment_vcov_mechanism_adjusted.csv`
+- `SITE_ohca_icu_72h_phenotype_assignment_lag_sensitivity_model.csv`
+- `SITE_ohca_icu_72h_phenotype_assignment_lag_sensitivity_temperature_curve.csv`
+- `SITE_ohca_icu_72h_phenotype_assignment_lag_sensitivity_coefficients.csv`
+- `SITE_ohca_icu_72h_phenotype_assignment_lag_sensitivity_vcov.csv`
 - `SITE_ohca_icu_competing_risk_awake_extubated_72h_summary.csv`
+- `SITE_ohca_icu_competing_risk_awake_extubated_72h_cif_curves.csv`
 - `SITE_ohca_icu_competing_risk_death_source_summary.csv`
 - `SITE_ohca_icu_competing_risk_awake_extubated_72h_ohca_mechanism_summary.csv`
 - `SITE_ohca_icu_competing_risk_awake_extubated_72h_fine_gray_models.csv`
 - `SITE_ohca_icu_competing_risk_awake_extubated_72h_coefficients.csv`
 - `SITE_ohca_icu_competing_risk_awake_extubated_72h_vcov.csv`
-- `SITE_ohca_icu_competing_risk_awake_extubated_72h_fine_gray_models.csv`
+- `SITE_ohca_icu_competing_risk_awake_extubated_72h_lag_sensitivity_fine_gray_models.csv`
+- `SITE_ohca_icu_competing_risk_awake_extubated_72h_lag_sensitivity_coefficients.csv`
+- `SITE_ohca_icu_competing_risk_awake_extubated_72h_lag_sensitivity_vcov.csv`
 
 Visual QC figures:
 

@@ -116,14 +116,21 @@ if (nrow(dlnm_lag_specific) > 0) {
 
 phenotype_primary <- read_if_exists(file.path(pooled_dir, "pooled_ohca_icu_72h_phenotype_assignment_coefficients.csv"))
 phenotype_mechanism <- read_if_exists(file.path(pooled_dir, "pooled_ohca_icu_72h_phenotype_assignment_coefficients_mechanism_adjusted.csv"))
+phenotype_lag <- read_if_exists(file.path(pooled_dir, "pooled_ohca_icu_72h_phenotype_assignment_lag_sensitivity_coefficients.csv"))
 
 make_phenotype_ratios <- function(df, adjustment) {
   if (nrow(df) == 0) return(tibble::tibble())
+  if (!"exposure_window" %in% names(df)) df$exposure_window <- "lag0"
   df |>
     dplyr::filter(.data$coefficient != "(Intercept)") |>
     dplyr::transmute(
       analysis_family = "72h phenotype multinomial",
-      analysis = adjustment,
+      analysis = dplyr::case_when(
+        .data$exposure_window == "lag0" ~ adjustment,
+        grepl("mechanism", .data$model) ~ paste0("temperature_humidity_demographics_mechanism_", .data$exposure_window),
+        TRUE ~ paste0("temperature_humidity_demographics_", .data$exposure_window)
+      ),
+      exposure_window = .data$exposure_window,
       model = .data$model,
       outcome = .data$outcome_level,
       reference = .data$reference_level,
@@ -150,16 +157,28 @@ make_phenotype_ratios <- function(df, adjustment) {
 
 phenotype_ratio_results <- dplyr::bind_rows(
   make_phenotype_ratios(phenotype_primary, "temperature_humidity_demographics"),
-  make_phenotype_ratios(phenotype_mechanism, "temperature_humidity_demographics_mechanism")
+  make_phenotype_ratios(phenotype_mechanism, "temperature_humidity_demographics_mechanism"),
+  make_phenotype_ratios(phenotype_lag, "temperature_humidity_lag_sensitivity")
 )
 
 fine_gray <- read_if_exists(file.path(pooled_dir, "pooled_ohca_icu_competing_risk_awake_extubated_72h_coefficients.csv"))
+fine_gray_lag <- read_if_exists(file.path(pooled_dir, "pooled_ohca_icu_competing_risk_awake_extubated_72h_lag_sensitivity_coefficients.csv"))
 fine_gray_ratio_results <- tibble::tibble()
-if (nrow(fine_gray) > 0) {
-  fine_gray_ratio_results <- fine_gray |>
+make_fine_gray_ratios <- function(df) {
+  if (nrow(df) == 0) return(tibble::tibble())
+  if (!"exposure_window" %in% names(df)) {
+    df$exposure_window <- dplyr::case_when(
+      grepl("lag0_1", df$model) ~ "lag0_1",
+      grepl("lag0_3", df$model) ~ "lag0_3",
+      grepl("lag0_5", df$model) ~ "lag0_5",
+      TRUE ~ "lag0"
+    )
+  }
+  df |>
     dplyr::transmute(
       analysis_family = "72h competing risk Fine-Gray",
-      analysis = .data$model,
+      analysis = ifelse(.data$exposure_window == "lag0", .data$model, paste0(.data$model, "_sensitivity")),
+      exposure_window = .data$exposure_window,
       model = .data$model,
       outcome = "Awake/extubated by 72h",
       competing_event = "Death before awake/extubated by 72h",
@@ -183,6 +202,10 @@ if (nrow(fine_gray) > 0) {
       )
     )
 }
+fine_gray_ratio_results <- dplyr::bind_rows(
+  make_fine_gray_ratios(fine_gray),
+  make_fine_gray_ratios(fine_gray_lag)
+)
 
 ratio_tables <- list(
   dlnm_ratio_results = dlnm_ratio_results,
