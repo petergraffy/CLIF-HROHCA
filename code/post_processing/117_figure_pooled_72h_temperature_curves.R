@@ -41,7 +41,7 @@ interpolate_site_curves <- function(curves, weights, curve_label) {
       site_df <- site_df[order(site_df$tmax_mean_c), ]
       unique_df <- site_df[!duplicated(site_df$tmax_mean_c), ]
       if (nrow(unique_df) < 2) return(data.frame())
-      data.frame(
+      out <- data.frame(
         site_name = unique(site_df$site_name),
         model = unique(site_df$model),
         curve_type = curve_label,
@@ -54,6 +54,37 @@ interpolate_site_curves <- function(curves, weights, curve_label) {
           rule = 1
         )$y
       )
+      if (all(c("predicted_probability_low", "predicted_probability_high") %in% names(unique_df))) {
+        if (sum(is.finite(unique_df$predicted_probability_low)) >= 2L) {
+          out$predicted_probability_low <- stats::approx(
+            x = unique_df$tmax_mean_c,
+            y = unique_df$predicted_probability_low,
+            xout = temp_grid,
+            rule = 1
+          )$y
+        } else {
+          out$predicted_probability_low <- NA_real_
+        }
+        if (sum(is.finite(unique_df$predicted_probability_high)) >= 2L) {
+          out$predicted_probability_high <- stats::approx(
+            x = unique_df$tmax_mean_c,
+            y = unique_df$predicted_probability_high,
+            xout = temp_grid,
+            rule = 1
+          )$y
+        } else {
+          out$predicted_probability_high <- NA_real_
+        }
+        if ("probability_ci_method" %in% names(unique_df)) {
+          methods <- unique(stats::na.omit(unique_df$probability_ci_method))
+          out$probability_ci_method <- if (length(methods) > 0) methods[[1]] else NA_character_
+        }
+        if ("probability_ci_simulations" %in% names(unique_df)) {
+          sims <- unique(stats::na.omit(unique_df$probability_ci_simulations))
+          out$probability_ci_simulations <- if (length(sims) > 0) sims[[1]] else NA_integer_
+        }
+      }
+      out
     }) |> dplyr::bind_rows()
   }) |> dplyr::bind_rows()
 
@@ -66,12 +97,19 @@ interpolate_site_curves <- function(curves, weights, curve_label) {
     ) |>
     dplyr::mutate(weight_n = dplyr::if_else(is.na(.data$weight_n), 1, .data$weight_n))
 
+  has_ci <- all(c("predicted_probability_low", "predicted_probability_high") %in% names(site_interpolated))
+  has_ci_method <- "probability_ci_method" %in% names(site_interpolated)
+  has_ci_sims <- "probability_ci_simulations" %in% names(site_interpolated)
   pooled <- site_interpolated |>
     dplyr::group_by(.data$model, .data$curve_type, .data$phenotype, .data$tmax_mean_c) |>
     dplyr::summarise(
       predicted_probability = stats::weighted.mean(.data$predicted_probability, w = .data$weight_n, na.rm = TRUE),
+      predicted_probability_low = if (has_ci) stats::weighted.mean(.data$predicted_probability_low, w = .data$weight_n, na.rm = TRUE) else NA_real_,
+      predicted_probability_high = if (has_ci) stats::weighted.mean(.data$predicted_probability_high, w = .data$weight_n, na.rm = TRUE) else NA_real_,
       k_sites = dplyr::n_distinct(.data$site_name),
       pooled_n = sum(.data$weight_n[!is.na(.data$predicted_probability)], na.rm = TRUE),
+      probability_ci_method = if (has_ci_method) paste(sort(unique(stats::na.omit(.data$probability_ci_method))), collapse = "; ") else NA_character_,
+      probability_ci_simulations = if (has_ci_sims) min(.data$probability_ci_simulations, na.rm = TRUE) else NA_integer_,
       .groups = "drop"
     )
 

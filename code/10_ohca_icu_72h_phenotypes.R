@@ -827,11 +827,119 @@ make_reference_newdata <- function(df, temp_grid, adjust_terms = character()) {
     if (!term %in% names(df)) next
     if (is.numeric(df[[term]])) {
       out[[term]] <- mean(df[[term]], na.rm = TRUE)
+    } else if (is.factor(df[[term]])) {
+      out[[term]] <- factor(mode_value(df[[term]]), levels = levels(df[[term]]))
     } else {
-      out[[term]] <- mode_value(df[[term]])
+      observed_levels <- sort(unique(stats::na.omit(as.character(df[[term]]))))
+      if (length(observed_levels) >= 2L) {
+        out[[term]] <- factor(mode_value(df[[term]]), levels = observed_levels)
+      } else {
+        out[[term]] <- mode_value(df[[term]])
+      }
     }
   }
   out
+}
+
+simulate_multinomial_probability_ci <- function(fit, newdata, keep_levels, reference_level, n_sim = 1000L, seed = 20260606L) {
+  empty_ci <- function(reason = "unavailable") {
+    message("Multinomial predicted-probability CI unavailable: ", reason)
+    tibble::tibble(
+      tmax_mean_c = numeric(),
+      phenotype = character(),
+      predicted_probability_low = numeric(),
+      predicted_probability_high = numeric(),
+      probability_ci_method = character(),
+      probability_ci_simulations = integer()
+    )
+  }
+  coef_mat <- stats::coef(fit)
+  if (is.null(dim(coef_mat))) {
+    coef_mat <- matrix(coef_mat, nrow = 1, dimnames = list(names(coef_mat)[[1]], names(coef_mat)))
+  }
+  vc <- tryCatch(stats::vcov(fit), error = function(e) NULL)
+  if (is.null(vc) || length(vc) == 0) return(empty_ci("missing vcov"))
+
+  vc_names <- colnames(vc)
+  if (is.null(vc_names)) {
+    vc_names <- as.vector(outer(rownames(coef_mat), colnames(coef_mat), paste, sep = ":"))
+    colnames(vc) <- vc_names
+    rownames(vc) <- vc_names
+  }
+
+  parse_name <- function(x) {
+    pieces <- strsplit(x, ":", fixed = TRUE)[[1]]
+    if (length(pieces) < 2L) return(c(outcome = NA_character_, coefficient = x))
+    c(outcome = pieces[[1]], coefficient = paste(pieces[-1], collapse = ":"))
+  }
+  parsed <- t(vapply(vc_names, parse_name, character(2)))
+  beta_mean <- vapply(seq_along(vc_names), function(i) {
+    outcome <- parsed[i, "outcome"]
+    coefficient <- parsed[i, "coefficient"]
+    if (is.na(outcome) || !outcome %in% rownames(coef_mat) || !coefficient %in% colnames(coef_mat)) return(NA_real_)
+    coef_mat[outcome, coefficient]
+  }, numeric(1))
+  if (any(!is.finite(beta_mean))) return(empty_ci("coefficient names did not align with vcov names"))
+
+  mm_error <- NULL
+  mm <- tryCatch(
+    stats::model.matrix(
+      stats::delete.response(stats::terms(fit)),
+      data = newdata,
+      contrasts.arg = fit$contrasts
+    ),
+    error = function(e) {
+      mm_error <<- conditionMessage(e)
+      NULL
+    }
+  )
+  if (is.null(mm)) return(empty_ci(paste0("could not build model matrix for reference newdata: ", mm_error)))
+  if (!all(colnames(coef_mat) %in% colnames(mm))) {
+    return(empty_ci(paste0(
+      "model matrix missing coefficient columns: ",
+      paste(setdiff(colnames(coef_mat), colnames(mm)), collapse = ", ")
+    )))
+  }
+  mm <- mm[, colnames(coef_mat), drop = FALSE]
+
+  vc <- (vc + t(vc)) / 2
+  eig <- tryCatch(eigen(vc, symmetric = TRUE), error = function(e) NULL)
+  if (is.null(eig)) return(empty_ci("could not decompose vcov"))
+  transform <- eig$vectors %*% diag(sqrt(pmax(eig$values, 0)), nrow = length(eig$values))
+  set.seed(seed)
+  beta_draws <- matrix(stats::rnorm(n_sim * length(beta_mean)), nrow = n_sim) %*% t(transform)
+  beta_draws <- sweep(beta_draws, 2, beta_mean, "+")
+
+  rows <- vector("list", n_sim)
+  for (sim_index in seq_len(n_sim)) {
+    beta_vec <- beta_draws[sim_index, ]
+    beta_mat <- matrix(0, nrow = nrow(coef_mat), ncol = ncol(coef_mat), dimnames = dimnames(coef_mat))
+    for (i in seq_along(vc_names)) {
+      beta_mat[parsed[i, "outcome"], parsed[i, "coefficient"]] <- beta_vec[[i]]
+    }
+    eta_nonref <- mm %*% t(beta_mat)
+    eta <- matrix(0, nrow = nrow(mm), ncol = length(keep_levels), dimnames = list(NULL, keep_levels))
+    for (outcome in rownames(coef_mat)) eta[, outcome] <- eta_nonref[, outcome]
+    eta <- eta - apply(eta, 1, max)
+    probs <- exp(eta) / rowSums(exp(eta))
+    rows[[sim_index]] <- as.data.frame(probs, stringsAsFactors = FALSE) |>
+      mutate(tmax_mean_c = newdata$tmax_mean_c, .before = 1) |>
+      tidyr::pivot_longer(
+        cols = dplyr::all_of(keep_levels),
+        names_to = "phenotype",
+        values_to = "predicted_probability_sim"
+      )
+  }
+
+  dplyr::bind_rows(rows) |>
+    dplyr::group_by(.data$tmax_mean_c, .data$phenotype) |>
+    dplyr::summarise(
+      predicted_probability_low = stats::quantile(.data$predicted_probability_sim, 0.025, na.rm = TRUE, names = FALSE),
+      predicted_probability_high = stats::quantile(.data$predicted_probability_sim, 0.975, na.rm = TRUE, names = FALSE),
+      probability_ci_method = "coefficient_vcov_simulation",
+      probability_ci_simulations = n_sim,
+      .groups = "drop"
+    )
 }
 
 run_spline_logistic <- function(df, outcome, label, adjust_terms = character(), spline_df = 3L) {
@@ -1026,11 +1134,21 @@ run_phenotype_assignment_model <- function(df, label, adjust_terms = character()
   if (is.null(dim(pred))) pred <- as.data.frame(t(pred), stringsAsFactors = FALSE)
   pred$tmax_mean_c <- temp_grid
   pred$rmax_mean_pct <- ref_humidity
+  probability_ci <- simulate_multinomial_probability_ci(
+    full_fit,
+    newdata = newdata,
+    keep_levels = keep_levels,
+    reference_level = reference_level
+  )
   curve <- pred |>
     tidyr::pivot_longer(
       cols = dplyr::all_of(keep_levels),
       names_to = "phenotype",
       values_to = "predicted_probability"
+    ) |>
+    left_join(
+      probability_ci,
+      by = c("tmax_mean_c", "phenotype")
     ) |>
     mutate(
       model = label,
