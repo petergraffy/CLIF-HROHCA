@@ -112,6 +112,32 @@ add_multinomial_standard_errors <- function(coef_df, vcov_df) {
   out
 }
 
+ed_death_summary <- read_bind("^[^_]+_ohca_ed_only_death_never_icu_summary[.]csv$")
+if (nrow(ed_death_summary) > 0) {
+  write.csv(ed_death_summary, file.path(output_dir, "all_site_ohca_ed_only_death_never_icu_summary.csv"), row.names = FALSE)
+  pooled_ed_death <- data.frame(
+    site_name = "Pooled",
+    diagnosis_source = paste(sort(unique(ed_death_summary$diagnosis_source)), collapse = "; "),
+    study_start = min(ed_death_summary$study_start, na.rm = TRUE),
+    study_end = max(ed_death_summary$study_end, na.rm = TRUE),
+    n_adult_hospitalizations = sum(ed_death_summary$n_adult_hospitalizations, na.rm = TRUE),
+    n_ohca_dx_hospitalizations = sum(ed_death_summary$n_ohca_dx_hospitalizations, na.rm = TRUE),
+    n_ohca_dx_patients = sum(ed_death_summary$n_ohca_dx_patients, na.rm = TRUE),
+    n_ohca_dx_first_location_ed = sum(ed_death_summary$n_ohca_dx_first_location_ed, na.rm = TRUE),
+    n_ohca_dx_ed_first_only_never_icu = sum(ed_death_summary$n_ohca_dx_ed_first_only_never_icu, na.rm = TRUE),
+    n_ohca_dx_ed_first_only_death_never_icu_hospitalizations = sum(ed_death_summary$n_ohca_dx_ed_first_only_death_never_icu_hospitalizations, na.rm = TRUE),
+    n_ohca_dx_ed_first_only_death_never_icu_patients = sum(ed_death_summary$n_ohca_dx_ed_first_only_death_never_icu_patients, na.rm = TRUE),
+    definition = paste(sort(unique(ed_death_summary$definition)), collapse = " | "),
+    stringsAsFactors = FALSE
+  )
+  write.csv(pooled_ed_death, file.path(output_dir, "pooled_ohca_ed_only_death_never_icu_summary.csv"), row.names = FALSE)
+}
+
+ed_death_pathway <- read_bind("^[^_]+_ohca_ed_only_death_never_icu_pathway_audit[.]csv$")
+if (nrow(ed_death_pathway) > 0) {
+  write.csv(ed_death_pathway, file.path(output_dir, "all_site_ohca_ed_only_death_never_icu_pathway_audit.csv"), row.names = FALSE)
+}
+
 phenotype_summary <- read_bind("^[^_]+_ohca_icu_72h_phenotype_summary[.]csv$")
 if (nrow(phenotype_summary) > 0) {
   write.csv(phenotype_summary, file.path(output_dir, "all_site_ohca_icu_72h_phenotype_summary.csv"), row.names = FALSE)

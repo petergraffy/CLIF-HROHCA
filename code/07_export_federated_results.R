@@ -48,9 +48,12 @@ lag_diag_dir <- file.path(repo_root, "output", "final", "ohca_tmax", "lag_diagno
 rate_dir <- file.path(repo_root, "output", "final", "ohca_tmax", "icu_admission_rate")
 case_crossover_dir <- file.path(repo_root, "output", "final", "ohca_tmax", "case_crossover")
 phenotype_dir <- file.path(repo_root, "output", "final", "ohca_icu_phenotypes")
+descriptive_dir <- file.path(repo_root, "output", "final", "descriptive")
 figure_dir <- file.path(repo_root, "output", "final", "manuscript_figures")
 
 exports <- list(
+  list(file.path(descriptive_dir, "ohca_ed_only_death_never_icu_summary.csv"), "ohca_ed_only_death_never_icu_summary"),
+  list(file.path(descriptive_dir, "ohca_ed_only_death_never_icu_pathway_audit.csv"), "ohca_ed_only_death_never_icu_pathway_audit"),
   list(file.path(manuscript_dir, "manuscript_dlnm_results.csv"), "dlnm_site_estimates"),
   list(file.path(manuscript_dir, "manuscript_dlnm_curves.csv"), "dlnm_curves"),
   list(file.path(manuscript_dir, "manuscript_dlnm_lag_summaries.csv"), "dlnm_lag_summaries"),
