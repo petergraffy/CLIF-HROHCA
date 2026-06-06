@@ -821,6 +821,24 @@ mode_value <- function(x) {
   names(sort(table(x), decreasing = TRUE))[[1]]
 }
 
+add_lag_window_means <- function(df, value_col, output_prefix) {
+  value <- rlang::ensym(value_col)
+  daily <- df |>
+    dplyr::group_by(.data$county_fips, .data$admission_date) |>
+    dplyr::summarise(!!rlang::as_name(value) := mean(!!value, na.rm = TRUE), .groups = "drop") |>
+    dplyr::mutate(!!rlang::as_name(value) := ifelse(is.nan(!!value), NA_real_, !!value))
+  lagged <- daily |>
+    dplyr::group_by(.data$county_fips) |>
+    dplyr::arrange(.data$admission_date, .by_group = TRUE) |>
+    dplyr::mutate(
+      "{output_prefix}_lag0_1" := rowMeans(cbind(!!value, dplyr::lag(!!value, 1L)), na.rm = FALSE),
+      "{output_prefix}_lag0_3" := rowMeans(cbind(!!value, dplyr::lag(!!value, 1L), dplyr::lag(!!value, 2L), dplyr::lag(!!value, 3L)), na.rm = FALSE),
+      "{output_prefix}_lag0_5" := rowMeans(cbind(!!value, dplyr::lag(!!value, 1L), dplyr::lag(!!value, 2L), dplyr::lag(!!value, 3L), dplyr::lag(!!value, 4L), dplyr::lag(!!value, 5L)), na.rm = FALSE)
+    ) |>
+    dplyr::ungroup()
+  lagged
+}
+
 make_reference_newdata <- function(df, temp_grid, adjust_terms = character()) {
   out <- tibble::tibble(tmax_mean_c = temp_grid, tmax_per5c = temp_grid / 5)
   for (term in adjust_terms) {
@@ -1036,10 +1054,54 @@ run_spline_logistic <- function(df, outcome, label, adjust_terms = character(), 
   list(summary = summary, curve = curve)
 }
 
-run_phenotype_assignment_model <- function(df, label, adjust_terms = character(), spline_df = 3L) {
+run_phenotype_assignment_model <- function(
+  df,
+  label,
+  adjust_terms = character(),
+  spline_df = 3L,
+  temp_var = "tmax_mean_c",
+  humidity_var = "rmax_mean_pct",
+  exposure_window = "lag0"
+) {
   keep_levels <- c("regained_consciousness_extubated", "limited_brain_function", "anoxic_brain_injury")
   reference_level <- "regained_consciousness_extubated"
-  base <- df |>
+  if (!all(c(temp_var, humidity_var) %in% names(df))) {
+    empty_base <- df[0, , drop = FALSE]
+    empty_summary <- tibble::tibble(
+      model = label,
+      exposure_window = exposure_window,
+      exposure_tmax_variable = temp_var,
+      exposure_humidity_variable = humidity_var,
+      n = 0L,
+      spline_df = spline_df,
+      reference_level = reference_level,
+      reference_temp_c = NA_real_,
+      reference_humidity_pct = NA_real_,
+      min_temp_c = NA_real_,
+      max_temp_c = NA_real_,
+      min_humidity_pct = NA_real_,
+      max_humidity_pct = NA_real_,
+      temperature_lrt_p_value = NA_real_,
+      humidity_lrt_p_value = NA_real_,
+      temperature_nonlinear_lrt_p_value = NA_real_,
+      aic = NA_real_,
+      covariates = paste(c("splines::ns(tmax_mean_c, df = 3)", "splines::ns(rmax_mean_pct, df = 3)", adjust_terms), collapse = " + "),
+      modeled_phenotypes = paste(keep_levels, collapse = " | "),
+      excluded_phenotypes = paste(setdiff(levels(factor(df$phenotype)), keep_levels), collapse = " | "),
+      omitted_terms = NA_character_,
+      estimable = FALSE,
+      skip_reason = paste("Missing exposure variable(s):", paste(setdiff(c(temp_var, humidity_var), names(df)), collapse = ", "))
+    )
+    return(list(summary = empty_summary, curve = tibble::tibble(), coefficients = tibble::tibble(), vcov = tibble::tibble()))
+  }
+  df_model <- df |>
+    mutate(
+      tmax_mean_c = suppressWarnings(as.numeric(.data[[temp_var]])),
+      rmax_mean_pct = suppressWarnings(as.numeric(.data[[humidity_var]])),
+      tmax_per5c = .data$tmax_mean_c / 5,
+      rmax_per10pct = .data$rmax_mean_pct / 10
+    )
+  base <- df_model |>
     filter(
       .data$phenotype %in% keep_levels,
       !is.na(.data$tmax_mean_c), is.finite(.data$tmax_mean_c),
@@ -1049,6 +1111,9 @@ run_phenotype_assignment_model <- function(df, label, adjust_terms = character()
 
   empty_summary <- tibble::tibble(
     model = label,
+    exposure_window = exposure_window,
+    exposure_tmax_variable = temp_var,
+    exposure_humidity_variable = humidity_var,
     n = nrow(base),
     spline_df = spline_df,
     reference_level = reference_level,
@@ -1152,6 +1217,9 @@ run_phenotype_assignment_model <- function(df, label, adjust_terms = character()
     ) |>
     mutate(
       model = label,
+      exposure_window = exposure_window,
+      exposure_tmax_variable = temp_var,
+      exposure_humidity_variable = humidity_var,
       reference_temp_c = ref_temp,
       reference_humidity_pct = ref_humidity,
       spline_df = spline_df,
@@ -1160,6 +1228,9 @@ run_phenotype_assignment_model <- function(df, label, adjust_terms = character()
 
   summary <- tibble::tibble(
     model = label,
+    exposure_window = exposure_window,
+    exposure_tmax_variable = temp_var,
+    exposure_humidity_variable = humidity_var,
     n = nrow(stats::model.frame(full_fit)),
     spline_df = spline_df,
     reference_level = reference_level,
@@ -1194,6 +1265,9 @@ run_phenotype_assignment_model <- function(df, label, adjust_terms = character()
     ) |>
     mutate(
       model = label,
+      exposure_window = exposure_window,
+      exposure_tmax_variable = temp_var,
+      exposure_humidity_variable = humidity_var,
       reference_level = reference_level,
       n = nrow(stats::model.frame(full_fit)),
       spline_df = spline_df,
@@ -1238,6 +1312,9 @@ run_phenotype_assignment_model <- function(df, label, adjust_terms = character()
       left_join(col_info, by = "col_name") |>
       transmute(
         model = label,
+        exposure_window = exposure_window,
+        exposure_tmax_variable = temp_var,
+        exposure_humidity_variable = humidity_var,
         reference_level = reference_level,
         n = nrow(stats::model.frame(full_fit)),
         spline_df = spline_df,
@@ -1283,7 +1360,8 @@ tmax <- tmax_raw |>
     county_fips = normalize_county_fips(.data[[tmax_county_col]]),
     admission_date = as.Date(.data$date),
     tmax_mean_c = suppressWarnings(as.numeric(.data$tmax_mean_c))
-  )
+  ) |>
+  add_lag_window_means("tmax_mean_c", "tmax_mean_c")
 
 rmax_raw <- arrow::read_parquet(RMAX_PATH)
 rmax_county_col <- if ("county_fips" %in% names(rmax_raw)) "county_fips" else if ("geoid" %in% names(rmax_raw)) "geoid" else NA_character_
@@ -1293,7 +1371,8 @@ rmax <- rmax_raw |>
     county_fips = normalize_county_fips(.data[[rmax_county_col]]),
     admission_date = as.Date(.data$date),
     rmax_mean_pct = suppressWarnings(as.numeric(.data$rmax_mean_pct))
-  )
+  ) |>
+  add_lag_window_means("rmax_mean_pct", "rmax_mean_pct")
 
 cohort <- ohca |>
   left_join(tmax, by = c("county_fips", "admission_date")) |>
@@ -1302,6 +1381,12 @@ cohort <- ohca |>
   mutate(
     tmax_per5c = .data$tmax_mean_c / 5,
     rmax_per10pct = .data$rmax_mean_pct / 10,
+    tmax_lag0_1_per5c = .data$tmax_mean_c_lag0_1 / 5,
+    tmax_lag0_3_per5c = .data$tmax_mean_c_lag0_3 / 5,
+    tmax_lag0_5_per5c = .data$tmax_mean_c_lag0_5 / 5,
+    rmax_lag0_1_per10pct = .data$rmax_mean_pct_lag0_1 / 10,
+    rmax_lag0_3_per10pct = .data$rmax_mean_pct_lag0_3 / 10,
+    rmax_lag0_5_per10pct = .data$rmax_mean_pct_lag0_5 / 10,
     death_within_72h = !is.na(.data$discharge_dttm) &
       .data$hospital_death == 1L &
       as.numeric(difftime(.data$discharge_dttm, .data$first_icu_in, units = "hours")) <= WINDOW_HOURS
@@ -1674,6 +1759,51 @@ phenotype_assignment_coefficients_mechanism <- phenotype_assignment_mechanism$co
 phenotype_assignment_vcov_mechanism <- phenotype_assignment_mechanism$vcov |>
   mutate(site_name = site_name, .before = 1)
 
+lag_window_specs <- tibble::tribble(
+  ~exposure_window, ~temp_var, ~humidity_var,
+  "lag0_1", "tmax_mean_c_lag0_1", "rmax_mean_pct_lag0_1",
+  "lag0_3", "tmax_mean_c_lag0_3", "rmax_mean_pct_lag0_3",
+  "lag0_5", "tmax_mean_c_lag0_5", "rmax_mean_pct_lag0_5"
+)
+
+phenotype_assignment_lag_results <- purrr::map(seq_len(nrow(lag_window_specs)), function(i) {
+  spec <- lag_window_specs[i, ]
+  primary <- run_phenotype_assignment_model(
+    phenotype_cohort,
+    paste0("phenotype_assignment_temperature_humidity_demographics_", spec$exposure_window),
+    base_adjust,
+    temp_var = spec$temp_var,
+    humidity_var = spec$humidity_var,
+    exposure_window = spec$exposure_window
+  )
+  mechanism <- run_phenotype_assignment_model(
+    phenotype_cohort,
+    paste0("phenotype_assignment_temperature_humidity_demographics_mechanism_", spec$exposure_window),
+    mechanism_adjust,
+    temp_var = spec$temp_var,
+    humidity_var = spec$humidity_var,
+    exposure_window = spec$exposure_window
+  )
+  list(primary = primary, mechanism = mechanism)
+})
+
+phenotype_assignment_lag_model <- purrr::map_dfr(phenotype_assignment_lag_results, function(x) {
+  bind_rows(x$primary$summary, x$mechanism$summary)
+}) |>
+  mutate(site_name = site_name, .before = 1)
+phenotype_assignment_lag_curve <- purrr::map_dfr(phenotype_assignment_lag_results, function(x) {
+  bind_rows(x$primary$curve, x$mechanism$curve)
+}) |>
+  mutate(site_name = site_name, .before = 1)
+phenotype_assignment_lag_coefficients <- purrr::map_dfr(phenotype_assignment_lag_results, function(x) {
+  bind_rows(x$primary$coefficients, x$mechanism$coefficients)
+}) |>
+  mutate(site_name = site_name, .before = 1)
+phenotype_assignment_lag_vcov <- purrr::map_dfr(phenotype_assignment_lag_results, function(x) {
+  bind_rows(x$primary$vcov, x$mechanism$vcov)
+}) |>
+  mutate(site_name = site_name, .before = 1)
+
 phenotype_definitions <- tibble::tibble(
   phenotype = c(
     "alive_no_imv",
@@ -1860,6 +1990,10 @@ readr::write_csv(phenotype_assignment_model_mechanism, file.path(OUTPUT_DIR, "oh
 readr::write_csv(phenotype_assignment_curve_mechanism, file.path(OUTPUT_DIR, "ohca_icu_72h_phenotype_assignment_temperature_curve_mechanism_adjusted.csv"))
 readr::write_csv(phenotype_assignment_coefficients_mechanism, file.path(OUTPUT_DIR, "ohca_icu_72h_phenotype_assignment_coefficients_mechanism_adjusted.csv"))
 readr::write_csv(phenotype_assignment_vcov_mechanism, file.path(OUTPUT_DIR, "ohca_icu_72h_phenotype_assignment_vcov_mechanism_adjusted.csv"))
+readr::write_csv(phenotype_assignment_lag_model, file.path(OUTPUT_DIR, "ohca_icu_72h_phenotype_assignment_lag_sensitivity_model.csv"))
+readr::write_csv(phenotype_assignment_lag_curve, file.path(OUTPUT_DIR, "ohca_icu_72h_phenotype_assignment_lag_sensitivity_temperature_curve.csv"))
+readr::write_csv(phenotype_assignment_lag_coefficients, file.path(OUTPUT_DIR, "ohca_icu_72h_phenotype_assignment_lag_sensitivity_coefficients.csv"))
+readr::write_csv(phenotype_assignment_lag_vcov, file.path(OUTPUT_DIR, "ohca_icu_72h_phenotype_assignment_lag_sensitivity_vcov.csv"))
 readr::write_csv(phenotype_definitions, file.path(OUTPUT_DIR, "ohca_icu_72h_phenotype_definitions.csv"))
 
 plot_df <- phenotype_summary |>

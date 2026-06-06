@@ -98,7 +98,7 @@ add_multinomial_standard_errors <- function(coef_df, vcov_df) {
   diag_vcov$coefficient <- diag_vcov$coefficient_row
   diag_vcov$variance <- diag_vcov$covariance
   join_cols <- intersect(
-    c("site_name", "model", "reference_level", "n", "spline_df", "outcome_level", "coefficient"),
+    c("site_name", "model", "exposure_window", "reference_level", "n", "spline_df", "outcome_level", "coefficient"),
     names(coef_df)
   )
   out <- merge(
@@ -179,6 +179,30 @@ if (nrow(phenotype_coef_mechanism) > 0) {
   write.csv(pooled, file.path(output_dir, "pooled_ohca_icu_72h_phenotype_assignment_coefficients_mechanism_adjusted.csv"), row.names = FALSE)
 }
 
+phenotype_lag_model <- read_bind("^[^_]+_ohca_icu_72h_phenotype_assignment_lag_sensitivity_model[.]csv$")
+phenotype_lag_curve <- read_bind("^[^_]+_ohca_icu_72h_phenotype_assignment_lag_sensitivity_temperature_curve[.]csv$")
+if (nrow(phenotype_lag_model) > 0) {
+  write.csv(phenotype_lag_model, file.path(output_dir, "all_site_ohca_icu_72h_phenotype_assignment_lag_sensitivity_model.csv"), row.names = FALSE)
+}
+if (nrow(phenotype_lag_curve) > 0) {
+  write.csv(phenotype_lag_curve, file.path(output_dir, "all_site_ohca_icu_72h_phenotype_assignment_lag_sensitivity_temperature_curve.csv"), row.names = FALSE)
+}
+
+phenotype_lag_coef <- add_multinomial_standard_errors(
+  read_bind("^[^_]+_ohca_icu_72h_phenotype_assignment_lag_sensitivity_coefficients[.]csv$"),
+  read_bind("^[^_]+_ohca_icu_72h_phenotype_assignment_lag_sensitivity_vcov[.]csv$")
+)
+if (nrow(phenotype_lag_coef) > 0) {
+  write.csv(phenotype_lag_coef, file.path(output_dir, "all_site_ohca_icu_72h_phenotype_assignment_lag_sensitivity_coefficients_with_se.csv"), row.names = FALSE)
+  pooled <- pool_rows(
+    phenotype_lag_coef,
+    c("model", "exposure_window", "reference_level", "outcome_level", "coefficient"),
+    exponentiate = TRUE,
+    effect_label = "odds_ratio"
+  )
+  write.csv(pooled, file.path(output_dir, "pooled_ohca_icu_72h_phenotype_assignment_lag_sensitivity_coefficients.csv"), row.names = FALSE)
+}
+
 for (suffix in c("summary", "death_source_summary", "ohca_mechanism_summary", "fine_gray_models")) {
   dat <- read_bind(paste0("^[^_]+_ohca_icu_competing_risk_awake_extubated_72h_", suffix, "[.]csv$"))
   if (nrow(dat) > 0) {
@@ -205,13 +229,15 @@ if (nrow(cif_curves) > 0) {
   if (!"stratum_max_temp_c" %in% names(cif_curves)) cif_curves$stratum_max_temp_c <- NA_real_
   write.csv(cif_curves, file.path(output_dir, "all_site_ohca_icu_competing_risk_awake_extubated_72h_cif_curves.csv"), row.names = FALSE)
   pooled_cif <- aggregate(
-    cbind(weighted_cif = cif * n, weighted_variance = variance * n, n) ~ model + stratification + stratum + stratum_order + event_code + event_type + time_hours,
+    cbind(weighted_cif = cif * n, weighted_variance = variance * n^2, n) ~ model + stratification + stratum + stratum_order + event_code + event_type + time_hours,
     data = cif_curves,
     FUN = sum
   )
   pooled_cif$cif <- pooled_cif$weighted_cif / pooled_cif$n
-  pooled_cif$variance <- pooled_cif$weighted_variance / pooled_cif$n
+  pooled_cif$variance <- pooled_cif$weighted_variance / pooled_cif$n^2
   pooled_cif$standard_error <- sqrt(pmax(pooled_cif$variance, 0))
+  pooled_cif$cif_low <- pmax(0, pooled_cif$cif - 1.96 * pooled_cif$standard_error)
+  pooled_cif$cif_high <- pmin(1, pooled_cif$cif + 1.96 * pooled_cif$standard_error)
   cif_group_cols <- c("model", "stratification", "stratum", "stratum_order", "event_code", "event_type", "time_hours")
   k_sites <- aggregate(
     site_name ~ model + stratification + stratum + stratum_order + event_code + event_type + time_hours,
@@ -236,7 +262,7 @@ if (nrow(cif_curves) > 0) {
   pooled_cif$stratum_max_temp_c <- temp_ranges$stratum_max_temp_c
   pooled_cif <- pooled_cif[, c(
     "model", "stratification", "stratum", "stratum_order", "stratum_min_temp_c", "stratum_max_temp_c",
-    "event_code", "event_type", "time_hours", "cif", "variance", "standard_error", "n", "k_sites"
+    "event_code", "event_type", "time_hours", "cif", "cif_low", "cif_high", "variance", "standard_error", "n", "k_sites"
   )]
   write.csv(pooled_cif, file.path(output_dir, "pooled_ohca_icu_competing_risk_awake_extubated_72h_cif_curves.csv"), row.names = FALSE)
 }
@@ -246,6 +272,18 @@ if (nrow(fg_coef) > 0) {
   write.csv(fg_coef, file.path(output_dir, "all_site_ohca_icu_competing_risk_awake_extubated_72h_coefficients.csv"), row.names = FALSE)
   pooled_fg <- pool_rows(fg_coef, c("model", "coefficient"), exponentiate = TRUE, effect_label = "subdistribution_hr")
   write.csv(pooled_fg, file.path(output_dir, "pooled_ohca_icu_competing_risk_awake_extubated_72h_coefficients.csv"), row.names = FALSE)
+}
+
+fg_lag_models <- read_bind("^[^_]+_ohca_icu_competing_risk_awake_extubated_72h_lag_sensitivity_fine_gray_models[.]csv$")
+if (nrow(fg_lag_models) > 0) {
+  write.csv(fg_lag_models, file.path(output_dir, "all_site_ohca_icu_competing_risk_awake_extubated_72h_lag_sensitivity_fine_gray_models.csv"), row.names = FALSE)
+}
+
+fg_lag_coef <- read_bind("^[^_]+_ohca_icu_competing_risk_awake_extubated_72h_lag_sensitivity_coefficients[.]csv$")
+if (nrow(fg_lag_coef) > 0) {
+  write.csv(fg_lag_coef, file.path(output_dir, "all_site_ohca_icu_competing_risk_awake_extubated_72h_lag_sensitivity_coefficients.csv"), row.names = FALSE)
+  pooled_fg_lag <- pool_rows(fg_lag_coef, c("model", "coefficient"), exponentiate = TRUE, effect_label = "subdistribution_hr")
+  write.csv(pooled_fg_lag, file.path(output_dir, "pooled_ohca_icu_competing_risk_awake_extubated_72h_lag_sensitivity_coefficients.csv"), row.names = FALSE)
 }
 
 message("Wrote pooled 72-hour phenotype and competing-risk outputs to ", output_dir)

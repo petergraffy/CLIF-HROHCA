@@ -139,6 +139,23 @@ wald_p <- function(beta, vcov) {
   stats::pchisq(stat, df = length(beta), lower.tail = FALSE)
 }
 
+add_lag_window_means <- function(df, value_col, output_prefix) {
+  value <- rlang::ensym(value_col)
+  daily <- df |>
+    dplyr::group_by(.data$county_fips, .data$admission_date) |>
+    dplyr::summarise(!!rlang::as_name(value) := mean(!!value, na.rm = TRUE), .groups = "drop") |>
+    dplyr::mutate(!!rlang::as_name(value) := ifelse(is.nan(!!value), NA_real_, !!value))
+  daily |>
+    dplyr::group_by(.data$county_fips) |>
+    dplyr::arrange(.data$admission_date, .by_group = TRUE) |>
+    dplyr::mutate(
+      "{output_prefix}_lag0_1" := rowMeans(cbind(!!value, dplyr::lag(!!value, 1L)), na.rm = FALSE),
+      "{output_prefix}_lag0_3" := rowMeans(cbind(!!value, dplyr::lag(!!value, 1L), dplyr::lag(!!value, 2L), dplyr::lag(!!value, 3L)), na.rm = FALSE),
+      "{output_prefix}_lag0_5" := rowMeans(cbind(!!value, dplyr::lag(!!value, 1L), dplyr::lag(!!value, 2L), dplyr::lag(!!value, 3L), dplyr::lag(!!value, 4L), dplyr::lag(!!value, 5L)), na.rm = FALSE)
+    ) |>
+    dplyr::ungroup()
+}
+
 extract_crr_terms <- function(fit, model, exposure_label, exposure_regex, n, events, competing, covariates, omitted_terms, estimable = TRUE, skip_reason = NA_character_) {
   if (!estimable || inherits(fit, "error")) {
     return(tibble::tibble(
@@ -422,7 +439,8 @@ tmax <- tmax_raw |>
     county_fips = normalize_county_fips(.data[[tmax_county_col]]),
     admission_date = as.Date(.data$date),
     tmax_mean_c = suppressWarnings(as.numeric(.data$tmax_mean_c))
-  )
+  ) |>
+  add_lag_window_means("tmax_mean_c", "tmax_mean_c")
 
 rmax_raw <- arrow::read_parquet(RMAX_PATH)
 rmax_county_col <- if ("county_fips" %in% names(rmax_raw)) "county_fips" else if ("geoid" %in% names(rmax_raw)) "geoid" else NA_character_
@@ -432,7 +450,8 @@ rmax <- rmax_raw |>
     county_fips = normalize_county_fips(.data[[rmax_county_col]]),
     admission_date = as.Date(.data$date),
     rmax_mean_pct = suppressWarnings(as.numeric(.data$rmax_mean_pct))
-  )
+  ) |>
+  add_lag_window_means("rmax_mean_pct", "rmax_mean_pct")
 
 cohort <- ohca |>
   left_join(tmax, by = c("county_fips", "admission_date")) |>
@@ -717,15 +736,21 @@ mechanism_summary <- analysis |>
 
 base_adjust <- c("age_at_admission", "sex_group", "race_group", "admit_year")
 mechanism_adjust <- c(base_adjust, "ohca_mechanism")
-analysis <- analysis |>
-  mutate(
-    tmax_spline_1 = splines::ns(.data$tmax_mean_c, df = 3)[, 1],
-    tmax_spline_2 = splines::ns(.data$tmax_mean_c, df = 3)[, 2],
-    tmax_spline_3 = splines::ns(.data$tmax_mean_c, df = 3)[, 3],
-    rmax_spline_1 = splines::ns(.data$rmax_mean_pct, df = 3)[, 1],
-    rmax_spline_2 = splines::ns(.data$rmax_mean_pct, df = 3)[, 2],
-    rmax_spline_3 = splines::ns(.data$rmax_mean_pct, df = 3)[, 3]
-  )
+
+add_exposure_splines <- function(df, temp_var, humidity_var, prefix = "") {
+  temp_spline <- splines::ns(df[[temp_var]], df = 3)
+  humidity_spline <- splines::ns(df[[humidity_var]], df = 3)
+  if (nzchar(prefix)) prefix <- paste0(prefix, "_")
+  df[[paste0(prefix, "tmax_spline_1")]] <- temp_spline[, 1]
+  df[[paste0(prefix, "tmax_spline_2")]] <- temp_spline[, 2]
+  df[[paste0(prefix, "tmax_spline_3")]] <- temp_spline[, 3]
+  df[[paste0(prefix, "rmax_spline_1")]] <- humidity_spline[, 1]
+  df[[paste0(prefix, "rmax_spline_2")]] <- humidity_spline[, 2]
+  df[[paste0(prefix, "rmax_spline_3")]] <- humidity_spline[, 3]
+  df
+}
+
+analysis <- add_exposure_splines(analysis, "tmax_mean_c", "rmax_mean_pct")
 
 fine_gray_results <- list(
   run_fine_gray(
@@ -746,11 +771,62 @@ fine_gray_results <- list(
   )
 )
 
+lag_window_specs <- tibble::tribble(
+  ~exposure_window, ~temp_var, ~humidity_var,
+  "lag0_1", "tmax_mean_c_lag0_1", "rmax_mean_pct_lag0_1",
+  "lag0_3", "tmax_mean_c_lag0_3", "rmax_mean_pct_lag0_3",
+  "lag0_5", "tmax_mean_c_lag0_5", "rmax_mean_pct_lag0_5"
+)
+
+fine_gray_lag_results <- purrr::map(seq_len(nrow(lag_window_specs)), function(i) {
+  spec <- lag_window_specs[i, ]
+  lag_df <- analysis |>
+    filter(!is.na(.data[[spec$temp_var]]), is.finite(.data[[spec$temp_var]]), !is.na(.data[[spec$humidity_var]]), is.finite(.data[[spec$humidity_var]]))
+  if (nrow(lag_df) > 0) {
+    lag_df <- add_exposure_splines(lag_df, spec$temp_var, spec$humidity_var, prefix = spec$exposure_window)
+  }
+  exposure_terms <- paste0(spec$exposure_window, "_", c(
+    "tmax_spline_1", "tmax_spline_2", "tmax_spline_3",
+    "rmax_spline_1", "rmax_spline_2", "rmax_spline_3"
+  ))
+  exposure_regex <- paste0("^", spec$exposure_window, "_tmax_spline_|^", spec$exposure_window, "_rmax_spline_")
+  primary <- run_fine_gray(
+    lag_df,
+    exposure_terms,
+    paste0("awake_extubated_72h_vs_death_72h_temperature_humidity_demographics_", spec$exposure_window),
+    paste0("Natural spline mean Tmax and humidity ", spec$exposure_window, ", df=3"),
+    exposure_regex,
+    base_adjust
+  )
+  mechanism <- run_fine_gray(
+    lag_df,
+    exposure_terms,
+    paste0("awake_extubated_72h_vs_death_72h_temperature_humidity_demographics_mechanism_", spec$exposure_window),
+    paste0("Natural spline mean Tmax and humidity ", spec$exposure_window, ", df=3"),
+    exposure_regex,
+    mechanism_adjust
+  )
+  list(primary = primary, mechanism = mechanism)
+})
+
 models <- purrr::map_dfr(fine_gray_results, "summary") |>
   mutate(site_name = site_name, .before = 1)
 model_coefficients <- purrr::map_dfr(fine_gray_results, "coefficients") |>
   mutate(site_name = site_name, .before = 1)
 model_vcov <- purrr::map_dfr(fine_gray_results, "vcov") |>
+  mutate(site_name = site_name, .before = 1)
+
+fine_gray_lag_models <- purrr::map_dfr(fine_gray_lag_results, function(x) {
+  bind_rows(x$primary$summary, x$mechanism$summary)
+}) |>
+  mutate(site_name = site_name, .before = 1)
+fine_gray_lag_coefficients <- purrr::map_dfr(fine_gray_lag_results, function(x) {
+  bind_rows(x$primary$coefficients, x$mechanism$coefficients)
+}) |>
+  mutate(site_name = site_name, .before = 1)
+fine_gray_lag_vcov <- purrr::map_dfr(fine_gray_lag_results, function(x) {
+  bind_rows(x$primary$vcov, x$mechanism$vcov)
+}) |>
   mutate(site_name = site_name, .before = 1)
 
 patient_audit <- analysis |>
@@ -772,6 +848,9 @@ readr::write_csv(mechanism_summary, file.path(OUTPUT_DIR, "ohca_icu_competing_ri
 readr::write_csv(models, file.path(OUTPUT_DIR, "ohca_icu_competing_risk_awake_extubated_72h_fine_gray_models.csv"))
 readr::write_csv(model_coefficients, file.path(OUTPUT_DIR, "ohca_icu_competing_risk_awake_extubated_72h_coefficients.csv"))
 readr::write_csv(model_vcov, file.path(OUTPUT_DIR, "ohca_icu_competing_risk_awake_extubated_72h_vcov.csv"))
+readr::write_csv(fine_gray_lag_models, file.path(OUTPUT_DIR, "ohca_icu_competing_risk_awake_extubated_72h_lag_sensitivity_fine_gray_models.csv"))
+readr::write_csv(fine_gray_lag_coefficients, file.path(OUTPUT_DIR, "ohca_icu_competing_risk_awake_extubated_72h_lag_sensitivity_coefficients.csv"))
+readr::write_csv(fine_gray_lag_vcov, file.path(OUTPUT_DIR, "ohca_icu_competing_risk_awake_extubated_72h_lag_sensitivity_vcov.csv"))
 readr::write_csv(patient_audit, file.path(OUTPUT_DIR, "ohca_icu_competing_risk_awake_extubated_72h_patient_audit.csv"))
 
 if (nrow(cif_curves) > 0) {

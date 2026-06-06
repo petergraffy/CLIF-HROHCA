@@ -104,13 +104,20 @@ exports <- list(
   list(file.path(phenotype_dir, "ohca_icu_72h_phenotype_assignment_temperature_curve_mechanism_adjusted.csv"), "ohca_icu_72h_phenotype_assignment_temperature_curve_mechanism_adjusted"),
   list(file.path(phenotype_dir, "ohca_icu_72h_phenotype_assignment_coefficients_mechanism_adjusted.csv"), "ohca_icu_72h_phenotype_assignment_coefficients_mechanism_adjusted"),
   list(file.path(phenotype_dir, "ohca_icu_72h_phenotype_assignment_vcov_mechanism_adjusted.csv"), "ohca_icu_72h_phenotype_assignment_vcov_mechanism_adjusted"),
+  list(file.path(phenotype_dir, "ohca_icu_72h_phenotype_assignment_lag_sensitivity_model.csv"), "ohca_icu_72h_phenotype_assignment_lag_sensitivity_model"),
+  list(file.path(phenotype_dir, "ohca_icu_72h_phenotype_assignment_lag_sensitivity_temperature_curve.csv"), "ohca_icu_72h_phenotype_assignment_lag_sensitivity_temperature_curve"),
+  list(file.path(phenotype_dir, "ohca_icu_72h_phenotype_assignment_lag_sensitivity_coefficients.csv"), "ohca_icu_72h_phenotype_assignment_lag_sensitivity_coefficients"),
+  list(file.path(phenotype_dir, "ohca_icu_72h_phenotype_assignment_lag_sensitivity_vcov.csv"), "ohca_icu_72h_phenotype_assignment_lag_sensitivity_vcov"),
   list(file.path(phenotype_dir, "ohca_icu_competing_risk_awake_extubated_72h_summary.csv"), "ohca_icu_competing_risk_awake_extubated_72h_summary"),
   list(file.path(phenotype_dir, "ohca_icu_competing_risk_awake_extubated_72h_cif_curves.csv"), "ohca_icu_competing_risk_awake_extubated_72h_cif_curves"),
   list(file.path(phenotype_dir, "ohca_icu_competing_risk_death_source_summary.csv"), "ohca_icu_competing_risk_death_source_summary"),
   list(file.path(phenotype_dir, "ohca_icu_competing_risk_awake_extubated_72h_ohca_mechanism_summary.csv"), "ohca_icu_competing_risk_awake_extubated_72h_ohca_mechanism_summary"),
   list(file.path(phenotype_dir, "ohca_icu_competing_risk_awake_extubated_72h_fine_gray_models.csv"), "ohca_icu_competing_risk_awake_extubated_72h_fine_gray_models"),
   list(file.path(phenotype_dir, "ohca_icu_competing_risk_awake_extubated_72h_coefficients.csv"), "ohca_icu_competing_risk_awake_extubated_72h_coefficients"),
-  list(file.path(phenotype_dir, "ohca_icu_competing_risk_awake_extubated_72h_vcov.csv"), "ohca_icu_competing_risk_awake_extubated_72h_vcov")
+  list(file.path(phenotype_dir, "ohca_icu_competing_risk_awake_extubated_72h_vcov.csv"), "ohca_icu_competing_risk_awake_extubated_72h_vcov"),
+  list(file.path(phenotype_dir, "ohca_icu_competing_risk_awake_extubated_72h_lag_sensitivity_fine_gray_models.csv"), "ohca_icu_competing_risk_awake_extubated_72h_lag_sensitivity_fine_gray_models"),
+  list(file.path(phenotype_dir, "ohca_icu_competing_risk_awake_extubated_72h_lag_sensitivity_coefficients.csv"), "ohca_icu_competing_risk_awake_extubated_72h_lag_sensitivity_coefficients"),
+  list(file.path(phenotype_dir, "ohca_icu_competing_risk_awake_extubated_72h_lag_sensitivity_vcov.csv"), "ohca_icu_competing_risk_awake_extubated_72h_lag_sensitivity_vcov")
 )
 
 invisible(lapply(exports, function(item) copy_csv(item[[1]], item[[2]])))
