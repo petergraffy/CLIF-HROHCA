@@ -147,7 +147,16 @@ if (nrow(phenotype_summary) > 0) {
   write.csv(pooled_phenotypes, file.path(output_dir, "pooled_ohca_icu_72h_phenotype_summary.csv"), row.names = FALSE)
 }
 
-for (suffix in c("table1", "table2_by_phenotype", "consort_flow", "gcs_landmark_by_phenotype", "phenotype_evidence_summary", "ohca_mechanism_summary")) {
+for (suffix in c(
+  "table1",
+  "table2_by_phenotype",
+  "consort_flow",
+  "gcs_landmark_by_phenotype",
+  "phenotype_evidence_summary",
+  "admission_temperature_distribution_summary",
+  "admission_temperature_density",
+  "ohca_mechanism_summary"
+)) {
   dat <- read_bind(paste0("^[^_]+_ohca_icu_72h_", suffix, "[.]csv$"))
   if (nrow(dat) > 0) {
     write.csv(dat, file.path(output_dir, paste0("all_site_ohca_icu_72h_", suffix, ".csv")), row.names = FALSE)

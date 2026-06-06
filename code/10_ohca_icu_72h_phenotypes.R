@@ -1728,6 +1728,37 @@ evidence_summary <- phenotype_cohort |>
   ) |>
   mutate(site_name = site_name, .before = 1)
 
+temperature_values <- phenotype_cohort$tmax_mean_c[is.finite(phenotype_cohort$tmax_mean_c)]
+temperature_density <- tibble::tibble()
+temperature_distribution_summary <- tibble::tibble(
+  site_name = site_name,
+  n = length(temperature_values),
+  mean_tmax_c = if (length(temperature_values) > 0) mean(temperature_values, na.rm = TRUE) else NA_real_,
+  sd_tmax_c = if (length(temperature_values) > 1) stats::sd(temperature_values, na.rm = TRUE) else NA_real_,
+  median_tmax_c = if (length(temperature_values) > 0) stats::median(temperature_values, na.rm = TRUE) else NA_real_,
+  q1_tmax_c = if (length(temperature_values) > 0) stats::quantile(temperature_values, 0.25, na.rm = TRUE, names = FALSE) else NA_real_,
+  q3_tmax_c = if (length(temperature_values) > 0) stats::quantile(temperature_values, 0.75, na.rm = TRUE, names = FALSE) else NA_real_,
+  min_tmax_c = if (length(temperature_values) > 0) min(temperature_values, na.rm = TRUE) else NA_real_,
+  max_tmax_c = if (length(temperature_values) > 0) max(temperature_values, na.rm = TRUE) else NA_real_
+)
+if (length(temperature_values) >= 2 && length(unique(temperature_values)) >= 2) {
+  density_fit <- stats::density(
+    temperature_values,
+    from = floor(min(temperature_values, na.rm = TRUE) - 5),
+    to = ceiling(max(temperature_values, na.rm = TRUE) + 5),
+    n = 512
+  )
+  temperature_density <- tibble::tibble(
+    site_name = site_name,
+    tmax_mean_c = density_fit$x,
+    density = density_fit$y,
+    n = length(temperature_values),
+    median_tmax_c = stats::median(temperature_values, na.rm = TRUE),
+    q1_tmax_c = stats::quantile(temperature_values, 0.25, na.rm = TRUE, names = FALSE),
+    q3_tmax_c = stats::quantile(temperature_values, 0.75, na.rm = TRUE, names = FALSE)
+  )
+}
+
 base_adjust <- c("age_at_admission", "sex_group", "race_group", "admit_year")
 mechanism_adjust <- c(base_adjust, "ohca_mechanism")
 
@@ -1982,6 +2013,8 @@ readr::write_csv(table2, file.path(OUTPUT_DIR, "ohca_icu_72h_table2_by_phenotype
 readr::write_csv(gcs_landmark_by_phenotype, file.path(OUTPUT_DIR, "ohca_icu_72h_gcs_landmark_by_phenotype.csv"))
 readr::write_csv(mechanism_summary, file.path(OUTPUT_DIR, "ohca_icu_72h_ohca_mechanism_summary.csv"))
 readr::write_csv(evidence_summary, file.path(OUTPUT_DIR, "ohca_icu_72h_phenotype_evidence_summary.csv"))
+readr::write_csv(temperature_distribution_summary, file.path(OUTPUT_DIR, "ohca_icu_72h_admission_temperature_distribution_summary.csv"))
+readr::write_csv(temperature_density, file.path(OUTPUT_DIR, "ohca_icu_72h_admission_temperature_density.csv"))
 readr::write_csv(phenotype_assignment_model, file.path(OUTPUT_DIR, "ohca_icu_72h_phenotype_assignment_model.csv"))
 readr::write_csv(phenotype_assignment_curve, file.path(OUTPUT_DIR, "ohca_icu_72h_phenotype_assignment_temperature_curve.csv"))
 readr::write_csv(phenotype_assignment_coefficients, file.path(OUTPUT_DIR, "ohca_icu_72h_phenotype_assignment_coefficients.csv"))
@@ -2019,6 +2052,33 @@ if (nrow(plot_df) > 0) {
     theme_minimal(base_size = 11) +
     theme(plot.title = element_text(face = "bold"))
   ggsave(file.path(FIGURE_DIR, "figure_ohca_icu_72h_phenotype_counts.png"), p, width = 8.5, height = 4.8, dpi = 300)
+}
+
+if (length(temperature_values) >= 2 && length(unique(temperature_values)) >= 2) {
+  p_temp_density <- ggplot(phenotype_cohort |> filter(is.finite(.data$tmax_mean_c)), aes(x = .data$tmax_mean_c)) +
+    geom_density(fill = "#5B8E7D", color = "#214E4A", alpha = 0.35, linewidth = 1.1, adjust = 1) +
+    geom_vline(xintercept = temperature_distribution_summary$median_tmax_c, color = "#262626", linewidth = 0.8) +
+    geom_vline(xintercept = c(temperature_distribution_summary$q1_tmax_c, temperature_distribution_summary$q3_tmax_c), color = "#6B6B6B", linewidth = 0.7, linetype = "dashed") +
+    scale_x_continuous(
+      limits = c(
+        floor(temperature_distribution_summary$min_tmax_c - 5),
+        ceiling(temperature_distribution_summary$max_tmax_c + 5)
+      ),
+      expand = expansion(mult = c(0, 0))
+    ) +
+    scale_y_continuous(expand = expansion(mult = c(0, 0.08))) +
+    labs(
+      title = "Admission-day temperature distribution among OHCA ICU admissions",
+      x = "Admission-day county maximum temperature, C",
+      y = "Density"
+    ) +
+    theme_minimal(base_size = 12) +
+    theme(
+      plot.title = element_text(face = "bold"),
+      panel.grid.minor = element_blank()
+    )
+  ggsave(file.path(FIGURE_DIR, "figure_ohca_icu_admission_temperature_density.png"), p_temp_density, width = 7.4, height = 4.4, dpi = 300)
+  ggsave(file.path(FIGURE_DIR, "figure_ohca_icu_admission_temperature_density.pdf"), p_temp_density, width = 7.4, height = 4.4)
 }
 
 if (nrow(phenotype_assignment_curve) > 0 && isTRUE(phenotype_assignment_model$estimable[[1]])) {
