@@ -172,6 +172,9 @@ Core analytic outputs:
 - `SITE_case_crossover_dlnm_reduced_coefficients.csv`
 - `SITE_case_crossover_dlnm_reduced_vcov.csv`
 - `SITE_case_crossover_referent_set_summary.csv`
+- `SITE_case_crossover_lag30_diagnostic_summary.csv`
+- `SITE_case_crossover_lag30_hot_temperature_lag_specific_rr.csv`
+- `SITE_case_crossover_lag30_hot_temperature_cumulative_rr_by_lag.csv`
 - `SITE_ohca_ed_only_death_never_icu_summary.csv`
 - `SITE_ohca_ed_only_death_never_icu_pathway_audit.csv`
 - `SITE_ohca_icu_72h_consort_flow.csv`

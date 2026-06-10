@@ -45,11 +45,12 @@ Rscript code/00_install_or_restore_packages.R
 7. `04d_ohca_icu_admission_rate_dlnm.R`: fits OHCA-per-ICU-admission-rate DLNMs with the same count-model denominator across strata.
 8. `04e_rate_lag30_diagnostic_plots.R`: creates OHCA-per-ICU-admission-rate lag-30 diagnostic summaries and figures using the total ICU admissions denominator.
 9. `04b_case_crossover_dlnm.R`: fits time-stratified case-crossover DLNMs.
-10. `10_ohca_icu_72h_phenotypes.R`: creates structured 72-hour ICU OHCA phenotypes using awake/neuro evidence beginning at ICU hour 12, descriptive tables, admission-temperature density exports, and multinomial phenotype-assignment models using admission-day temperature and humidity plus 0-1, 0-3, and 0-5 day exposure-window sensitivities.
-11. `11_ohca_icu_competing_risks.R`: fits 72-hour Fine-Gray competing-risk models for time to awake-and-extubated recovery versus death before awake/extubated, with awake/neuro evidence beginning at ICU hour 12, using admission-day temperature and humidity plus 0-1, 0-3, and 0-5 day exposure-window sensitivities.
-12. `12_ohca_icu_imv24_time_to_event.R`: fits an IMV-24 landmark competing-risk analysis for successful extubation, death/hospice discharge, and tracheostomy after 24 hours of IMV, with admission temperature adjusted for age, sex, and race.
-13. `13_ohca_icu_imv12_discharge_multinomial.R`: fits an IMV-duration >=12-hour multinomial model for final discharge outcome: death/hospice, LTACH with tracheostomy, alive discharge home, or alive discharge SNF.
-14. `07_export_federated_results.R`: writes DLNM, ED-only death, and 72-hour phenotype aggregate site files plus selected site-level figure PNGs for federated pooling and visual QC.
+10. `04f_case_crossover_lag30_diagnostic_plots.R`: creates time-stratified case-crossover lag-30 diagnostic summaries for lag-specific and cumulative lag-window manuscript figures.
+11. `10_ohca_icu_72h_phenotypes.R`: creates structured 72-hour ICU OHCA phenotypes using awake/neuro evidence beginning at ICU hour 12, descriptive tables, admission-temperature density exports, and multinomial phenotype-assignment models using admission-day temperature and humidity plus 0-1, 0-3, and 0-5 day exposure-window sensitivities.
+12. `11_ohca_icu_competing_risks.R`: fits 72-hour Fine-Gray competing-risk models for time to awake-and-extubated recovery versus death before awake/extubated, with awake/neuro evidence beginning at ICU hour 12, using admission-day temperature and humidity plus 0-1, 0-3, and 0-5 day exposure-window sensitivities.
+13. `12_ohca_icu_imv24_time_to_event.R`: fits an IMV-24 landmark competing-risk analysis for successful extubation, death/hospice discharge, and tracheostomy after 24 hours of IMV, with admission temperature adjusted for age, sex, and race.
+14. `13_ohca_icu_imv12_discharge_multinomial.R`: fits an IMV-duration >=12-hour multinomial model for final discharge outcome: death/hospice, LTACH with tracheostomy, alive discharge home, or alive discharge SNF.
+15. `07_export_federated_results.R`: writes DLNM, ED-only death, and 72-hour phenotype aggregate site files plus selected site-level figure PNGs for federated pooling and visual QC.
 
 ## Optional Tables
 

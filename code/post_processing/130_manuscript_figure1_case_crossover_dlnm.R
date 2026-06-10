@@ -45,11 +45,9 @@ if (nrow(site_curve) == 0 || nrow(pooled_curve) == 0) {
 
 max_sites <- max(pooled_curve$k_sites, na.rm = TRUE)
 y_breaks <- c(0.25, 0.5, 0.75, 1, 1.5, 2, 3, 4)
-x_breaks <- seq(
-  floor(min(pooled_curve$tmax_mean_c, na.rm = TRUE) / 10) * 10,
-  ceiling(max(pooled_curve$tmax_mean_c, na.rm = TRUE) / 10) * 10,
-  by = 10
-)
+x_limits_c <- c(-20, 38)
+fahrenheit_breaks <- seq(0, 100, by = 20)
+x_breaks_c <- (fahrenheit_breaks - 32) * 5 / 9
 
 figure1 <- ggplot2::ggplot() +
   ggplot2::geom_hline(yintercept = 1, color = "grey35", linewidth = 0.45, linetype = "dashed") +
@@ -72,23 +70,25 @@ figure1 <- ggplot2::ggplot() +
     color = "#0f6b78",
     linewidth = 1.35
   ) +
-  ggplot2::scale_x_continuous(breaks = x_breaks, expand = ggplot2::expansion(mult = c(0.01, 0.02))) +
+  ggplot2::scale_x_continuous(
+    breaks = x_breaks_c,
+    labels = fahrenheit_breaks,
+    expand = ggplot2::expansion(mult = c(0.01, 0.02))
+  ) +
   ggplot2::scale_y_log10(
     breaks = y_breaks,
     labels = format(y_breaks, trim = TRUE),
     expand = ggplot2::expansion(mult = c(0.03, 0.08))
   ) +
-  ggplot2::coord_cartesian(ylim = c(0.25, 4)) +
+  ggplot2::coord_cartesian(xlim = x_limits_c, ylim = c(0.25, 4)) +
   ggplot2::labs(
     title = "Time-stratified case-crossover DLNM",
-    subtitle = "Median-reference, humidity-adjusted model; pooled curve with 95% CI and site curves in grey",
-    x = "Daily maximum temperature (C)",
+    x = "Daily maximum temperature (°F)",
     y = "Cumulative relative risk"
   ) +
   ggplot2::theme_classic(base_size = 12) +
   ggplot2::theme(
     plot.title = ggplot2::element_text(face = "bold", size = 14),
-    plot.subtitle = ggplot2::element_text(color = "grey30", size = 10.5),
     axis.title = ggplot2::element_text(face = "bold"),
     axis.text = ggplot2::element_text(color = "grey15"),
     axis.line = ggplot2::element_line(color = "grey15"),

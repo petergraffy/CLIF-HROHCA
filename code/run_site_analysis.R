@@ -29,6 +29,7 @@ scripts <- c(
   "04d_ohca_icu_admission_rate_dlnm.R",
   "04e_rate_lag30_diagnostic_plots.R",
   "04b_case_crossover_dlnm.R",
+  "04f_case_crossover_lag30_diagnostic_plots.R",
   "10_ohca_icu_72h_phenotypes.R",
   "11_ohca_icu_competing_risks.R",
   "12_ohca_icu_imv24_time_to_event.R",
