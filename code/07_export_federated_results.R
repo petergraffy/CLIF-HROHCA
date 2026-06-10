@@ -119,7 +119,21 @@ exports <- list(
   list(file.path(phenotype_dir, "ohca_icu_competing_risk_awake_extubated_72h_vcov.csv"), "ohca_icu_competing_risk_awake_extubated_72h_vcov"),
   list(file.path(phenotype_dir, "ohca_icu_competing_risk_awake_extubated_72h_lag_sensitivity_fine_gray_models.csv"), "ohca_icu_competing_risk_awake_extubated_72h_lag_sensitivity_fine_gray_models"),
   list(file.path(phenotype_dir, "ohca_icu_competing_risk_awake_extubated_72h_lag_sensitivity_coefficients.csv"), "ohca_icu_competing_risk_awake_extubated_72h_lag_sensitivity_coefficients"),
-  list(file.path(phenotype_dir, "ohca_icu_competing_risk_awake_extubated_72h_lag_sensitivity_vcov.csv"), "ohca_icu_competing_risk_awake_extubated_72h_lag_sensitivity_vcov")
+  list(file.path(phenotype_dir, "ohca_icu_competing_risk_awake_extubated_72h_lag_sensitivity_vcov.csv"), "ohca_icu_competing_risk_awake_extubated_72h_lag_sensitivity_vcov"),
+  list(file.path(phenotype_dir, "ohca_icu_imv24_time_to_event_summary.csv"), "ohca_icu_imv24_time_to_event_summary"),
+  list(file.path(phenotype_dir, "ohca_icu_imv24_time_to_event_landmark_flow.csv"), "ohca_icu_imv24_time_to_event_landmark_flow"),
+  list(file.path(phenotype_dir, "ohca_icu_imv24_time_to_event_cif_curves.csv"), "ohca_icu_imv24_time_to_event_cif_curves"),
+  list(file.path(phenotype_dir, "ohca_icu_imv24_time_to_event_evidence_summary.csv"), "ohca_icu_imv24_time_to_event_evidence_summary"),
+  list(file.path(phenotype_dir, "ohca_icu_imv24_time_to_event_table_by_outcome.csv"), "ohca_icu_imv24_time_to_event_table_by_outcome"),
+  list(file.path(phenotype_dir, "ohca_icu_imv24_time_to_event_fine_gray_models.csv"), "ohca_icu_imv24_time_to_event_fine_gray_models"),
+  list(file.path(phenotype_dir, "ohca_icu_imv24_time_to_event_coefficients.csv"), "ohca_icu_imv24_time_to_event_coefficients"),
+  list(file.path(phenotype_dir, "ohca_icu_imv24_time_to_event_vcov.csv"), "ohca_icu_imv24_time_to_event_vcov"),
+  list(file.path(phenotype_dir, "ohca_icu_imv12_discharge_outcome_summary.csv"), "ohca_icu_imv12_discharge_outcome_summary"),
+  list(file.path(phenotype_dir, "ohca_icu_imv12_discharge_outcome_flow.csv"), "ohca_icu_imv12_discharge_outcome_flow"),
+  list(file.path(phenotype_dir, "ohca_icu_imv12_discharge_outcome_table_by_outcome.csv"), "ohca_icu_imv12_discharge_outcome_table_by_outcome"),
+  list(file.path(phenotype_dir, "ohca_icu_imv12_discharge_outcome_model.csv"), "ohca_icu_imv12_discharge_outcome_model"),
+  list(file.path(phenotype_dir, "ohca_icu_imv12_discharge_outcome_coefficients.csv"), "ohca_icu_imv12_discharge_outcome_coefficients"),
+  list(file.path(phenotype_dir, "ohca_icu_imv12_discharge_outcome_vcov.csv"), "ohca_icu_imv12_discharge_outcome_vcov")
 )
 
 invisible(lapply(exports, function(item) copy_csv(item[[1]], item[[2]])))
@@ -145,4 +159,4 @@ figure_paths <- file.path(figure_dir, c(
 ))
 invisible(lapply(figure_paths, copy_figure))
 
-message("Wrote DLNM and 72-hour phenotype federated exports to ", output_dir)
+message("Wrote DLNM and post-ICU federated exports to ", output_dir)

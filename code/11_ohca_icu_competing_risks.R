@@ -53,6 +53,7 @@ unlink(file.path(OUTPUT_DIR, c(
   "ohca_icu_competing_risk_extubation_patient_audit.csv"
 )))
 FOLLOWUP_HOURS <- 72
+AWAKE_SIGNAL_START_HOUR <- 12
 
 config <- load_project_config(repo_root)
 validate_site_name(config, repo_root)
@@ -524,7 +525,7 @@ respiratory <- read_clif_table(
   tables_path,
   file_type,
   "respiratory_support",
-  columns = c("hospitalization_id", "recorded_dttm", "device_category", "artificial_airway", "tracheostomy"),
+  columns = c("hospitalization_id", "recorded_dttm", "device_category", "tracheostomy"),
   required = FALSE
 )
 if (is.null(respiratory) || nrow(respiratory) == 0) {
@@ -532,22 +533,19 @@ if (is.null(respiratory) || nrow(respiratory) == 0) {
 } else if (!all(c("hospitalization_id", "recorded_dttm") %in% names(respiratory))) {
   resp_events <- tibble::tibble(hospitalization_id = cohort_ids)
 } else {
-  respiratory <- ensure_columns(respiratory, c("device_category", "artificial_airway", "tracheostomy"))
+  respiratory <- ensure_columns(respiratory, c("device_category", "tracheostomy"))
   resp_long <- respiratory |>
     transmute(
       hospitalization_id = as.character(.data$hospitalization_id),
       recorded_dttm = as_utc_datetime(.data$recorded_dttm),
       device_category = stringr::str_to_upper(tidyr::replace_na(as.character(.data$device_category), "")),
-      artificial_airway = stringr::str_to_upper(tidyr::replace_na(as.character(.data$artificial_airway), "")),
       tracheostomy = stringr::str_to_upper(tidyr::replace_na(as.character(.data$tracheostomy), ""))
     ) |>
     filter(.data$hospitalization_id %in% cohort_ids, !is.na(.data$recorded_dttm)) |>
     inner_join(cohort |> select("hospitalization_id", "first_icu_in"), by = "hospitalization_id") |>
     mutate(
       icu_hour = as.numeric(difftime(.data$recorded_dttm, .data$first_icu_in, units = "hours")),
-      imv = .data$device_category %in% c("IMV", "VENT") |
-        .data$artificial_airway %in% c("ETT", "NASAL ETT", "TRACH") |
-        .data$tracheostomy %in% c("1", "TRUE", "YES")
+      imv = .data$device_category %in% c("IMV", "VENT")
     ) |>
     filter(.data$icu_hour >= 0) |>
     arrange(.data$hospitalization_id, .data$recorded_dttm)
@@ -611,13 +609,13 @@ if (is.null(assessments) || nrow(assessments) == 0) {
     mutate(
       icu_hour = as.numeric(difftime(.data$recorded_dttm, .data$first_icu_in, units = "hours")),
       awake_signal = (
-        .data$icu_hour >= 24 &
+        .data$icu_hour >= AWAKE_SIGNAL_START_HOUR &
           .data$assessment_category_clean == "gcs_total" & !is.na(.data$numerical_value) & .data$numerical_value >= 13
       ) | (
-        .data$icu_hour >= 24 &
+        .data$icu_hour >= AWAKE_SIGNAL_START_HOUR &
           .data$assessment_category_clean == "gcs_motor" & !is.na(.data$numerical_value) & .data$numerical_value >= 6
       ) | (
-        .data$icu_hour >= 24 &
+        .data$icu_hour >= AWAKE_SIGNAL_START_HOUR &
           .data$assessment_category_clean == "rass" & !is.na(.data$numerical_value) & .data$numerical_value >= -1 & .data$numerical_value <= 4
       ) | (
         .data$assessment_category_clean == "avpu" & stringr::str_detect(paste(.data$categorical_value, .data$text_value), "alert")
@@ -693,7 +691,7 @@ summary_tbl <- analysis |>
   mutate(
     site_name = site_name,
     pct = 100 * .data$n / sum(.data$n),
-    definition = "Fine-Gray at-risk cohort is OHCA ICU admissions with invasive ventilation after ICU entry. Follow-up is administratively censored at 72 ICU hours. Event of interest is being both extubated and awake by 72 hours, defined as the later of first post-final-IMV non-IMV respiratory support record and first awake signal. Awake signal mirrors the regained-consciousness phenotype: GCS total >=13, GCS motor 6, or RASS >=-1 after ICU hour 24; AVPU alert, SAT pass, or SBT pass after ICU entry. Competing event is death before awake/extubated by 72 hours. Patients with neither event by 72 hours are censored as neither by 72h. Death time uses patient death_dttm when present, otherwise expired/death discharge with last recorded vital as fallback.",
+    definition = sprintf("Fine-Gray at-risk cohort is OHCA ICU admissions with invasive ventilation after ICU entry. Follow-up is administratively censored at 72 ICU hours. Event of interest is being both extubated and awake by 72 hours, defined as the later of first post-final-IMV non-IMV respiratory support record and first awake signal. Awake signal mirrors the regained-consciousness phenotype: GCS total >=13, GCS motor 6, or RASS >=-1 after ICU hour %d; AVPU alert, SAT pass, or SBT pass after ICU entry. Competing event is death before awake/extubated by 72 hours. Patients with neither event by 72 hours are censored as neither by 72h. Death time uses patient death_dttm when present, otherwise expired/death discharge with last recorded vital as fallback.", AWAKE_SIGNAL_START_HOUR),
     .before = 1
   )
 

@@ -295,4 +295,96 @@ if (nrow(fg_lag_coef) > 0) {
   write.csv(pooled_fg_lag, file.path(output_dir, "pooled_ohca_icu_competing_risk_awake_extubated_72h_lag_sensitivity_coefficients.csv"), row.names = FALSE)
 }
 
+imv24_summary <- read_bind("^[^_]+_ohca_icu_imv24_time_to_event_summary[.]csv$")
+if (nrow(imv24_summary) > 0) {
+  write.csv(imv24_summary, file.path(output_dir, "all_site_ohca_icu_imv24_time_to_event_summary.csv"), row.names = FALSE)
+  pooled_imv24 <- aggregate(n ~ status_label, data = imv24_summary, FUN = sum)
+  pooled_imv24$pct <- 100 * pooled_imv24$n / sum(pooled_imv24$n)
+  pooled_imv24 <- pooled_imv24[, c("status_label", "n", "pct")]
+  write.csv(pooled_imv24, file.path(output_dir, "pooled_ohca_icu_imv24_time_to_event_summary.csv"), row.names = FALSE)
+}
+
+imv24_flow <- read_bind("^[^_]+_ohca_icu_imv24_time_to_event_landmark_flow[.]csv$")
+if (nrow(imv24_flow) > 0) write.csv(imv24_flow, file.path(output_dir, "all_site_ohca_icu_imv24_time_to_event_landmark_flow.csv"), row.names = FALSE)
+
+imv24_evidence <- read_bind("^[^_]+_ohca_icu_imv24_time_to_event_evidence_summary[.]csv$")
+if (nrow(imv24_evidence) > 0) write.csv(imv24_evidence, file.path(output_dir, "all_site_ohca_icu_imv24_time_to_event_evidence_summary.csv"), row.names = FALSE)
+
+imv24_table <- read_bind("^[^_]+_ohca_icu_imv24_time_to_event_table_by_outcome[.]csv$")
+if (nrow(imv24_table) > 0) write.csv(imv24_table, file.path(output_dir, "all_site_ohca_icu_imv24_time_to_event_table_by_outcome.csv"), row.names = FALSE)
+
+imv24_models <- read_bind("^[^_]+_ohca_icu_imv24_time_to_event_fine_gray_models[.]csv$")
+if (nrow(imv24_models) > 0) write.csv(imv24_models, file.path(output_dir, "all_site_ohca_icu_imv24_time_to_event_fine_gray_models.csv"), row.names = FALSE)
+
+imv24_coef <- read_bind("^[^_]+_ohca_icu_imv24_time_to_event_coefficients[.]csv$")
+if (nrow(imv24_coef) > 0) {
+  write.csv(imv24_coef, file.path(output_dir, "all_site_ohca_icu_imv24_time_to_event_coefficients.csv"), row.names = FALSE)
+  pooled_imv24_coef <- pool_rows(imv24_coef, c("model", "event_type", "coefficient"), exponentiate = TRUE, effect_label = "subdistribution_hr")
+  write.csv(pooled_imv24_coef, file.path(output_dir, "pooled_ohca_icu_imv24_time_to_event_coefficients.csv"), row.names = FALSE)
+}
+
+imv24_vcov <- read_bind("^[^_]+_ohca_icu_imv24_time_to_event_vcov[.]csv$")
+if (nrow(imv24_vcov) > 0) write.csv(imv24_vcov, file.path(output_dir, "all_site_ohca_icu_imv24_time_to_event_vcov.csv"), row.names = FALSE)
+
+imv24_cif <- read_bind("^[^_]+_ohca_icu_imv24_time_to_event_cif_curves[.]csv$")
+if (nrow(imv24_cif) > 0) {
+  write.csv(imv24_cif, file.path(output_dir, "all_site_ohca_icu_imv24_time_to_event_cif_curves.csv"), row.names = FALSE)
+  pooled_imv24_cif <- aggregate(
+    cbind(weighted_cif = cif * n, weighted_variance = variance * n^2, n) ~ model + stratification + stratum + stratum_order + event_code + event_type + time_days + time_hours,
+    data = imv24_cif,
+    FUN = sum
+  )
+  pooled_imv24_cif$cif <- pooled_imv24_cif$weighted_cif / pooled_imv24_cif$n
+  pooled_imv24_cif$variance <- pooled_imv24_cif$weighted_variance / pooled_imv24_cif$n^2
+  pooled_imv24_cif$standard_error <- sqrt(pmax(pooled_imv24_cif$variance, 0))
+  pooled_imv24_cif$cif_low <- pmax(0, pooled_imv24_cif$cif - 1.96 * pooled_imv24_cif$standard_error)
+  pooled_imv24_cif$cif_high <- pmin(1, pooled_imv24_cif$cif + 1.96 * pooled_imv24_cif$standard_error)
+  imv24_cif_group_cols <- c("model", "stratification", "stratum", "stratum_order", "event_code", "event_type", "time_days", "time_hours")
+  k_sites <- aggregate(
+    site_name ~ model + stratification + stratum + stratum_order + event_code + event_type + time_days + time_hours,
+    data = imv24_cif,
+    FUN = function(x) length(unique(x))
+  )
+  names(k_sites)[names(k_sites) == "site_name"] <- "k_sites"
+  pooled_imv24_cif <- merge(pooled_imv24_cif, k_sites, by = imv24_cif_group_cols, all.x = TRUE, sort = FALSE)
+  pooled_imv24_cif <- pooled_imv24_cif[, c(
+    "model", "stratification", "stratum", "stratum_order", "event_code", "event_type",
+    "time_days", "time_hours", "cif", "cif_low", "cif_high", "variance", "standard_error", "n", "k_sites"
+  )]
+  write.csv(pooled_imv24_cif, file.path(output_dir, "pooled_ohca_icu_imv24_time_to_event_cif_curves.csv"), row.names = FALSE)
+}
+
+imv12_discharge_summary <- read_bind("^[^_]+_ohca_icu_imv12_discharge_outcome_summary[.]csv$")
+if (nrow(imv12_discharge_summary) > 0) {
+  write.csv(imv12_discharge_summary, file.path(output_dir, "all_site_ohca_icu_imv12_discharge_outcome_summary.csv"), row.names = FALSE)
+  pooled_imv12_summary <- aggregate(n ~ discharge_outcome, data = imv12_discharge_summary, FUN = sum)
+  pooled_imv12_summary$pct_among_imv12 <- 100 * pooled_imv12_summary$n / sum(pooled_imv12_summary$n)
+  pooled_imv12_summary <- pooled_imv12_summary[, c("discharge_outcome", "n", "pct_among_imv12")]
+  write.csv(pooled_imv12_summary, file.path(output_dir, "pooled_ohca_icu_imv12_discharge_outcome_summary.csv"), row.names = FALSE)
+}
+
+imv12_discharge_flow <- read_bind("^[^_]+_ohca_icu_imv12_discharge_outcome_flow[.]csv$")
+if (nrow(imv12_discharge_flow) > 0) write.csv(imv12_discharge_flow, file.path(output_dir, "all_site_ohca_icu_imv12_discharge_outcome_flow.csv"), row.names = FALSE)
+
+imv12_discharge_table <- read_bind("^[^_]+_ohca_icu_imv12_discharge_outcome_table_by_outcome[.]csv$")
+if (nrow(imv12_discharge_table) > 0) write.csv(imv12_discharge_table, file.path(output_dir, "all_site_ohca_icu_imv12_discharge_outcome_table_by_outcome.csv"), row.names = FALSE)
+
+imv12_discharge_model <- read_bind("^[^_]+_ohca_icu_imv12_discharge_outcome_model[.]csv$")
+if (nrow(imv12_discharge_model) > 0) write.csv(imv12_discharge_model, file.path(output_dir, "all_site_ohca_icu_imv12_discharge_outcome_model.csv"), row.names = FALSE)
+
+imv12_discharge_coef <- read_bind("^[^_]+_ohca_icu_imv12_discharge_outcome_coefficients[.]csv$")
+if (nrow(imv12_discharge_coef) > 0) {
+  write.csv(imv12_discharge_coef, file.path(output_dir, "all_site_ohca_icu_imv12_discharge_outcome_coefficients.csv"), row.names = FALSE)
+  pooled_imv12_coef <- pool_rows(
+    imv12_discharge_coef,
+    c("model", "outcome_level", "reference_level", "coefficient"),
+    exponentiate = TRUE,
+    effect_label = "odds_ratio"
+  )
+  write.csv(pooled_imv12_coef, file.path(output_dir, "pooled_ohca_icu_imv12_discharge_outcome_coefficients.csv"), row.names = FALSE)
+}
+
+imv12_discharge_vcov <- read_bind("^[^_]+_ohca_icu_imv12_discharge_outcome_vcov[.]csv$")
+if (nrow(imv12_discharge_vcov) > 0) write.csv(imv12_discharge_vcov, file.path(output_dir, "all_site_ohca_icu_imv12_discharge_outcome_vcov.csv"), row.names = FALSE)
+
 message("Wrote pooled 72-hour phenotype and competing-risk outputs to ", output_dir)

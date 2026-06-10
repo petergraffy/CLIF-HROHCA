@@ -206,6 +206,20 @@ Core analytic outputs:
 - `SITE_ohca_icu_competing_risk_awake_extubated_72h_lag_sensitivity_fine_gray_models.csv`
 - `SITE_ohca_icu_competing_risk_awake_extubated_72h_lag_sensitivity_coefficients.csv`
 - `SITE_ohca_icu_competing_risk_awake_extubated_72h_lag_sensitivity_vcov.csv`
+- `SITE_ohca_icu_imv24_time_to_event_summary.csv`
+- `SITE_ohca_icu_imv24_time_to_event_landmark_flow.csv`
+- `SITE_ohca_icu_imv24_time_to_event_cif_curves.csv`
+- `SITE_ohca_icu_imv24_time_to_event_evidence_summary.csv`
+- `SITE_ohca_icu_imv24_time_to_event_table_by_outcome.csv`
+- `SITE_ohca_icu_imv24_time_to_event_fine_gray_models.csv`
+- `SITE_ohca_icu_imv24_time_to_event_coefficients.csv`
+- `SITE_ohca_icu_imv24_time_to_event_vcov.csv`
+- `SITE_ohca_icu_imv12_discharge_outcome_summary.csv`
+- `SITE_ohca_icu_imv12_discharge_outcome_flow.csv`
+- `SITE_ohca_icu_imv12_discharge_outcome_table_by_outcome.csv`
+- `SITE_ohca_icu_imv12_discharge_outcome_model.csv`
+- `SITE_ohca_icu_imv12_discharge_outcome_coefficients.csv`
+- `SITE_ohca_icu_imv12_discharge_outcome_vcov.csv`
 
 Visual QC figures:
 

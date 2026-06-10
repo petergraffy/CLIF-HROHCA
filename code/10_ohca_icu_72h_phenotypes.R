@@ -67,7 +67,7 @@ unlink(file.path(OUTPUT_DIR, c(
 )))
 
 WINDOW_HOURS <- 72
-LATE_START_HOUR <- 24
+LATE_START_HOUR <- 12
 EXTUBATION_ASSESSMENT_START_HOUR <- 48
 
 config <- load_project_config(repo_root)
@@ -1438,22 +1438,19 @@ if (is.null(respiratory) || nrow(respiratory) == 0) {
 } else if (!all(c("hospitalization_id", "recorded_dttm") %in% names(respiratory))) {
   resp_summary <- tibble::tibble(hospitalization_id = cohort_ids)
 } else {
-  respiratory <- ensure_columns(respiratory, c("device_category", "artificial_airway", "tracheostomy"))
+  respiratory <- ensure_columns(respiratory, c("device_category", "tracheostomy"))
   resp_summary <- respiratory |>
     transmute(
       hospitalization_id = as.character(.data$hospitalization_id),
       recorded_dttm = as_utc_datetime(.data$recorded_dttm),
       device_category = stringr::str_to_upper(tidyr::replace_na(as.character(.data$device_category), "")),
-      artificial_airway = stringr::str_to_upper(tidyr::replace_na(as.character(.data$artificial_airway), "")),
       tracheostomy = stringr::str_to_upper(tidyr::replace_na(as.character(.data$tracheostomy), ""))
     ) |>
     filter(.data$hospitalization_id %in% cohort_ids, !is.na(.data$recorded_dttm)) |>
     inner_join(cohort |> select("hospitalization_id", "first_icu_in"), by = "hospitalization_id") |>
     mutate(
       icu_hour = as.numeric(difftime(.data$recorded_dttm, .data$first_icu_in, units = "hours")),
-      imv = .data$device_category %in% c("IMV", "VENT") |
-        .data$artificial_airway %in% c("ETT", "NASAL ETT", "TRACH") |
-        .data$tracheostomy %in% c("1", "TRUE", "YES")
+      imv = .data$device_category %in% c("IMV", "VENT")
     ) |>
     filter(.data$icu_hour >= 0, .data$icu_hour <= WINDOW_HOURS) |>
     arrange(.data$hospitalization_id, .data$recorded_dttm) |>
@@ -1977,9 +1974,9 @@ table2 <- bind_rows(
   add_table2_continuous(phenotype_table_cohort, "Organ dysfunction", "SOFA total at 72h, median [IQR]", "sofa_total_72h", table2_phenotype_levels),
   add_table2_binary(phenotype_table_cohort, "72h phenotype evidence", "Extubated/no ongoing IMV by 72h", "extubated_by_72h", table2_phenotype_levels),
   add_table2_binary(phenotype_table_cohort, "72h phenotype evidence", "Composite awake signal", "awake_signal", table2_phenotype_levels),
-  add_table2_binary(phenotype_table_cohort, "Awake signal components", "GCS total >=13 after ICU hour 24", "awake_gcs_total_ge13_24_72h", table2_phenotype_levels),
-  add_table2_binary(phenotype_table_cohort, "Awake signal components", "GCS motor = 6 after ICU hour 24", "awake_gcs_motor_6_24_72h", table2_phenotype_levels),
-  add_table2_binary(phenotype_table_cohort, "Awake signal components", "RASS >= -1 after ICU hour 24", "awake_rass_ge_minus1_24_72h", table2_phenotype_levels),
+  add_table2_binary(phenotype_table_cohort, "Awake signal components", sprintf("GCS total >=13 after ICU hour %d", LATE_START_HOUR), "awake_gcs_total_ge13_24_72h", table2_phenotype_levels),
+  add_table2_binary(phenotype_table_cohort, "Awake signal components", sprintf("GCS motor = 6 after ICU hour %d", LATE_START_HOUR), "awake_gcs_motor_6_24_72h", table2_phenotype_levels),
+  add_table2_binary(phenotype_table_cohort, "Awake signal components", sprintf("RASS >= -1 after ICU hour %d", LATE_START_HOUR), "awake_rass_ge_minus1_24_72h", table2_phenotype_levels),
   add_table2_binary(phenotype_table_cohort, "Awake signal components", "AVPU alert in first 72h", "any_avpu_alert_0_72h", table2_phenotype_levels),
   add_table2_binary(phenotype_table_cohort, "Awake signal components", "SAT pass in first 72h", "sat_pass_0_72h", table2_phenotype_levels),
   add_table2_binary(phenotype_table_cohort, "Awake signal components", "SBT pass in first 72h", "sbt_pass_0_72h", table2_phenotype_levels),

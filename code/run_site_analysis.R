@@ -31,6 +31,8 @@ scripts <- c(
   "04b_case_crossover_dlnm.R",
   "10_ohca_icu_72h_phenotypes.R",
   "11_ohca_icu_competing_risks.R",
+  "12_ohca_icu_imv24_time_to_event.R",
+  "13_ohca_icu_imv12_discharge_multinomial.R",
   "07_export_federated_results.R"
 )
 
