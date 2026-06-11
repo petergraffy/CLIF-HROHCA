@@ -293,12 +293,12 @@ run_dlnm_spec <- function(
     if (fallback_linear) {
       message("Falling back to linear model for DLNM model '", model, "' in stratum '", label, "': ", skip_reason)
       fallback <- run_linear_fallback_spec(df, label, model, reference, time_df_per_year, include_dow, skip_reason)
-      if (return_curve) return(list(result = fallback, curve = NULL, reduced_coef = NULL, reduced_vcov = NULL))
+      if (return_curve) return(list(result = fallback, curve = NULL, reduced_coef = NULL, reduced_vcov = NULL, lag_summary = NULL, lag_specific = NULL, lag_temperature_surface = NULL))
       return(fallback)
     } else {
       message("Skipping DLNM model '", model, "' in stratum '", label, "': ", skip_reason)
       skipped <- make_nonestimable_dlnm_result(df, label, model, reference, time_df_per_year, include_dow, include_year, skip_reason)
-      if (return_curve) return(list(result = skipped, curve = NULL, reduced_coef = NULL, reduced_vcov = NULL))
+      if (return_curve) return(list(result = skipped, curve = NULL, reduced_coef = NULL, reduced_vcov = NULL, lag_summary = NULL, lag_specific = NULL, lag_temperature_surface = NULL))
       return(skipped)
     }
   }
@@ -327,12 +327,12 @@ run_dlnm_spec <- function(
     if (fallback_linear) {
       message("Falling back to linear model for DLNM model '", model, "' in stratum '", label, "': ", reason)
       fallback <- run_linear_fallback_spec(df, label, model, reference, time_df_per_year, include_dow, reason)
-      if (return_curve) return(list(result = fallback, curve = NULL, reduced_coef = NULL, reduced_vcov = NULL))
+      if (return_curve) return(list(result = fallback, curve = NULL, reduced_coef = NULL, reduced_vcov = NULL, lag_summary = NULL, lag_specific = NULL, lag_temperature_surface = NULL))
       return(fallback)
     }
     skipped <- make_nonestimable_dlnm_result(df, label, model, reference, time_df_per_year, include_dow, include_year, reason)
     message("Skipping DLNM model '", model, "' in stratum '", label, "': ", skipped$skip_reason)
-    if (return_curve) return(list(result = skipped, curve = NULL, reduced_coef = NULL, reduced_vcov = NULL))
+    if (return_curve) return(list(result = skipped, curve = NULL, reduced_coef = NULL, reduced_vcov = NULL, lag_summary = NULL, lag_specific = NULL, lag_temperature_surface = NULL))
     return(skipped)
   }
 
@@ -368,12 +368,12 @@ run_dlnm_spec <- function(
     if (fallback_linear) {
       message("Falling back to linear model for DLNM model '", model, "' in stratum '", label, "': ", reason)
       fallback <- run_linear_fallback_spec(df, label, model, reference, time_df_per_year, include_dow, reason)
-      if (return_curve) return(list(result = fallback, curve = NULL, reduced_coef = NULL, reduced_vcov = NULL))
+      if (return_curve) return(list(result = fallback, curve = NULL, reduced_coef = NULL, reduced_vcov = NULL, lag_summary = NULL, lag_specific = NULL, lag_temperature_surface = NULL))
       return(fallback)
     }
     skipped <- make_nonestimable_dlnm_result(df, label, model, reference, time_df_per_year, include_dow, include_year, reason)
     message("Skipping DLNM model '", model, "' in stratum '", label, "': ", skipped$skip_reason)
-    if (return_curve) return(list(result = skipped, curve = NULL, reduced_coef = NULL, reduced_vcov = NULL))
+    if (return_curve) return(list(result = skipped, curve = NULL, reduced_coef = NULL, reduced_vcov = NULL, lag_summary = NULL, lag_specific = NULL, lag_temperature_surface = NULL))
     return(skipped)
   }
 
@@ -389,12 +389,12 @@ run_dlnm_spec <- function(
     if (fallback_linear) {
       message("Falling back to linear model for DLNM model '", model, "' in stratum '", label, "': ", reason)
       fallback <- run_linear_fallback_spec(df, label, model, reference, time_df_per_year, include_dow, reason)
-      if (return_curve) return(list(result = fallback, curve = NULL, reduced_coef = NULL, reduced_vcov = NULL))
+      if (return_curve) return(list(result = fallback, curve = NULL, reduced_coef = NULL, reduced_vcov = NULL, lag_summary = NULL, lag_specific = NULL, lag_temperature_surface = NULL))
       return(fallback)
     }
     skipped <- make_nonestimable_dlnm_result(df, label, model, reference, time_df_per_year, include_dow, include_year, reason)
     message("Skipping DLNM model '", model, "' in stratum '", label, "': ", skipped$skip_reason)
-    if (return_curve) return(list(result = skipped, curve = NULL, reduced_coef = NULL, reduced_vcov = NULL))
+    if (return_curve) return(list(result = skipped, curve = NULL, reduced_coef = NULL, reduced_vcov = NULL, lag_summary = NULL, lag_specific = NULL, lag_temperature_surface = NULL))
     return(skipped)
   }
   dispersion <- summary(fit)$dispersion
@@ -417,12 +417,12 @@ run_dlnm_spec <- function(
     if (fallback_linear) {
       message("Falling back to linear model for DLNM model '", model, "' in stratum '", label, "': ", reason)
       fallback <- run_linear_fallback_spec(df, label, model, reference, time_df_per_year, include_dow, reason)
-      if (return_curve) return(list(result = fallback, curve = NULL, reduced_coef = NULL, reduced_vcov = NULL))
+      if (return_curve) return(list(result = fallback, curve = NULL, reduced_coef = NULL, reduced_vcov = NULL, lag_summary = NULL, lag_specific = NULL, lag_temperature_surface = NULL))
       return(fallback)
     }
     skipped <- make_nonestimable_dlnm_result(df, label, model, reference, time_df_per_year, include_dow, include_year, reason)
     message("Skipping DLNM model '", model, "' in stratum '", label, "': ", skipped$skip_reason)
-    if (return_curve) return(list(result = skipped, curve = NULL, reduced_coef = NULL, reduced_vcov = NULL))
+    if (return_curve) return(list(result = skipped, curve = NULL, reduced_coef = NULL, reduced_vcov = NULL, lag_summary = NULL, lag_specific = NULL, lag_temperature_surface = NULL))
     return(skipped)
   }
   center <- prediction_objects$center
@@ -541,6 +541,17 @@ run_dlnm_spec <- function(
     ) / (2 * 1.96)
   }
 
+  lag_temperature_surface <- make_dlnm_lag_temperature_surface(
+    pred = pred,
+    grid = grid,
+    label = label,
+    model = model,
+    reference = reference,
+    center = center,
+    hot_temp = hot_temp,
+    effect_prefix = "rr"
+  )
+
   if (return_curve) {
     return(list(
       result = result,
@@ -548,7 +559,8 @@ run_dlnm_spec <- function(
       reduced_coef = reduced_coef,
       reduced_vcov = reduced_vcov,
       lag_summary = lag_summary,
-      lag_specific = lag_specific
+      lag_specific = lag_specific,
+      lag_temperature_surface = lag_temperature_surface
     ))
   }
 
@@ -598,6 +610,7 @@ reduced_coef_rows <- list()
 reduced_vcov_rows <- list()
 lag_summary_rows <- list()
 lag_specific_rows <- list()
+lag_temperature_surface_rows <- list()
 
 overall_primary <- run_dlnm_spec(model_df, "Overall", model = "primary_humidity_adjusted", reference = "median", return_curve = TRUE)
 results[["overall_primary"]] <- overall_primary$result
@@ -606,6 +619,7 @@ reduced_coef_rows[["overall_primary"]] <- overall_primary$reduced_coef
 reduced_vcov_rows[["overall_primary"]] <- overall_primary$reduced_vcov
 lag_summary_rows[["overall_primary"]] <- overall_primary$lag_summary
 lag_specific_rows[["overall_primary"]] <- overall_primary$lag_specific
+lag_temperature_surface_rows[["overall_primary"]] <- overall_primary$lag_temperature_surface
 
 overall_pollution <- run_dlnm_spec(
   model_df,
@@ -621,6 +635,7 @@ reduced_coef_rows[["overall_pollution"]] <- overall_pollution$reduced_coef
 reduced_vcov_rows[["overall_pollution"]] <- overall_pollution$reduced_vcov
 lag_summary_rows[["overall_pollution"]] <- overall_pollution$lag_summary
 lag_specific_rows[["overall_pollution"]] <- overall_pollution$lag_specific
+lag_temperature_surface_rows[["overall_pollution"]] <- overall_pollution$lag_temperature_surface
 
 overall_mrt <- run_dlnm_spec(
   model_df,
@@ -636,6 +651,7 @@ reduced_coef_rows[["overall_mrt"]] <- overall_mrt$reduced_coef
 reduced_vcov_rows[["overall_mrt"]] <- overall_mrt$reduced_vcov
 lag_summary_rows[["overall_mrt"]] <- overall_mrt$lag_summary
 lag_specific_rows[["overall_mrt"]] <- overall_mrt$lag_specific
+lag_temperature_surface_rows[["overall_mrt"]] <- overall_mrt$lag_temperature_surface
 
 time_sensitivity_fits <- list()
 for (time_df_candidate in c(3L, 4L, 6L)) {
@@ -664,6 +680,7 @@ bind_nonnull <- function(rows) {
 time_sensitivity_df <- bind_nonnull(lapply(time_sensitivity_fits, `[[`, "result"))
 time_sensitivity_lag_summary_df <- bind_nonnull(lapply(time_sensitivity_fits, `[[`, "lag_summary"))
 time_sensitivity_lag_specific_df <- bind_nonnull(lapply(time_sensitivity_fits, `[[`, "lag_specific"))
+time_sensitivity_lag_temperature_surface_df <- bind_nonnull(lapply(time_sensitivity_fits, `[[`, "lag_temperature_surface"))
 
 for (nm in c("male","female","age_lt65","age_ge65","race_black","race_nonblack")) {
   counts_df <- strata_counts[[nm]]
@@ -693,6 +710,7 @@ for (nm in c("male","female","age_lt65","age_ge65","race_black","race_nonblack")
   if (!is.null(stratified$reduced_vcov)) reduced_vcov_rows[[paste0(nm, "_primary")]] <- stratified$reduced_vcov
   if (!is.null(stratified$lag_summary)) lag_summary_rows[[paste0(nm, "_primary")]] <- stratified$lag_summary
   if (!is.null(stratified$lag_specific)) lag_specific_rows[[paste0(nm, "_primary")]] <- stratified$lag_specific
+  if (!is.null(stratified$lag_temperature_surface)) lag_temperature_surface_rows[[paste0(nm, "_primary")]] <- stratified$lag_temperature_surface
 
   stratified_pollution <- run_dlnm_spec(
     merged,
@@ -712,6 +730,7 @@ for (nm in c("male","female","age_lt65","age_ge65","race_black","race_nonblack")
   if (!is.null(stratified_pollution$reduced_vcov)) reduced_vcov_rows[[paste0(nm, "_pollution")]] <- stratified_pollution$reduced_vcov
   if (!is.null(stratified_pollution$lag_summary)) lag_summary_rows[[paste0(nm, "_pollution")]] <- stratified_pollution$lag_summary
   if (!is.null(stratified_pollution$lag_specific)) lag_specific_rows[[paste0(nm, "_pollution")]] <- stratified_pollution$lag_specific
+  if (!is.null(stratified_pollution$lag_temperature_surface)) lag_temperature_surface_rows[[paste0(nm, "_pollution")]] <- stratified_pollution$lag_temperature_surface
 
   stratified_mrt <- run_dlnm_spec(
     merged,
@@ -731,6 +750,7 @@ for (nm in c("male","female","age_lt65","age_ge65","race_black","race_nonblack")
   if (!is.null(stratified_mrt$reduced_vcov)) reduced_vcov_rows[[paste0(nm, "_mrt")]] <- stratified_mrt$reduced_vcov
   if (!is.null(stratified_mrt$lag_summary)) lag_summary_rows[[paste0(nm, "_mrt")]] <- stratified_mrt$lag_summary
   if (!is.null(stratified_mrt$lag_specific)) lag_specific_rows[[paste0(nm, "_mrt")]] <- stratified_mrt$lag_specific
+  if (!is.null(stratified_mrt$lag_temperature_surface)) lag_temperature_surface_rows[[paste0(nm, "_mrt")]] <- stratified_mrt$lag_temperature_surface
 }
 
 results_df <- do.call(rbind, results)
@@ -739,26 +759,45 @@ reduced_coef_df <- do.call(rbind, reduced_coef_rows)
 reduced_vcov_df <- do.call(rbind, reduced_vcov_rows)
 lag_summary_df <- do.call(rbind, lag_summary_rows)
 lag_specific_df <- do.call(rbind, lag_specific_rows)
+lag_temperature_surface_df <- do.call(rbind, lag_temperature_surface_rows)
 results_df$analysis_period <- ANALYSIS_PERIOD_LABEL
 curves_df$analysis_period <- ANALYSIS_PERIOD_LABEL
 reduced_coef_df$analysis_period <- ANALYSIS_PERIOD_LABEL
 reduced_vcov_df$analysis_period <- ANALYSIS_PERIOD_LABEL
 lag_summary_df$analysis_period <- ANALYSIS_PERIOD_LABEL
 lag_specific_df$analysis_period <- ANALYSIS_PERIOD_LABEL
+lag_temperature_surface_df$analysis_period <- ANALYSIS_PERIOD_LABEL
 time_sensitivity_df$analysis_period <- ANALYSIS_PERIOD_LABEL
 if (nrow(time_sensitivity_lag_summary_df) > 0) time_sensitivity_lag_summary_df$analysis_period <- ANALYSIS_PERIOD_LABEL
 if (nrow(time_sensitivity_lag_specific_df) > 0) time_sensitivity_lag_specific_df$analysis_period <- ANALYSIS_PERIOD_LABEL
+if (nrow(time_sensitivity_lag_temperature_surface_df) > 0) time_sensitivity_lag_temperature_surface_df$analysis_period <- ANALYSIS_PERIOD_LABEL
 write.csv(results_df, file.path(output_dir, "manuscript_dlnm_results.csv"), row.names = FALSE)
 write.csv(curves_df, file.path(output_dir, "manuscript_dlnm_curves.csv"), row.names = FALSE)
 write.csv(reduced_coef_df, file.path(output_dir, "manuscript_dlnm_reduced_coefficients.csv"), row.names = FALSE)
 write.csv(reduced_vcov_df, file.path(output_dir, "manuscript_dlnm_reduced_vcov.csv"), row.names = FALSE)
 write.csv(lag_summary_df, file.path(output_dir, "manuscript_dlnm_lag_summaries.csv"), row.names = FALSE)
 write.csv(lag_specific_df, file.path(output_dir, "manuscript_dlnm_lag_specific_summaries.csv"), row.names = FALSE)
+write.csv(lag_temperature_surface_df, file.path(output_dir, "manuscript_dlnm_lag_temperature_surface.csv"), row.names = FALSE)
+invisible(write_dlnm_lag_temperature_surface_pdf(
+  lag_temperature_surface_df,
+  file.path(output_dir, "manuscript_dlnm_lag_temperature_surface_plots.pdf"),
+  effect_col = "rr",
+  title_prefix = paste("Count DLNM", ANALYSIS_PERIOD_LABEL)
+))
 write.csv(time_sensitivity_df, file.path(output_dir, "manuscript_dlnm_time_adjustment_sensitivity.csv"), row.names = FALSE)
 if (nrow(time_sensitivity_lag_summary_df) > 0) {
   write.csv(time_sensitivity_lag_summary_df, file.path(output_dir, "manuscript_dlnm_time_adjustment_lag_summaries.csv"), row.names = FALSE)
 }
 if (nrow(time_sensitivity_lag_specific_df) > 0) {
   write.csv(time_sensitivity_lag_specific_df, file.path(output_dir, "manuscript_dlnm_time_adjustment_lag_specific_summaries.csv"), row.names = FALSE)
+}
+if (nrow(time_sensitivity_lag_temperature_surface_df) > 0) {
+  write.csv(time_sensitivity_lag_temperature_surface_df, file.path(output_dir, "manuscript_dlnm_time_adjustment_lag_temperature_surface.csv"), row.names = FALSE)
+  invisible(write_dlnm_lag_temperature_surface_pdf(
+    time_sensitivity_lag_temperature_surface_df,
+    file.path(output_dir, "manuscript_dlnm_time_adjustment_lag_temperature_surface_plots.pdf"),
+    effect_col = "rr",
+    title_prefix = paste("Count DLNM time sensitivity", ANALYSIS_PERIOD_LABEL)
+  ))
 }
 message("Wrote manuscript-style ", ANALYSIS_PERIOD_LABEL, " DLNM results to ", output_dir)

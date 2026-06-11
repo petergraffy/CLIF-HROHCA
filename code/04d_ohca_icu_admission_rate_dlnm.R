@@ -287,13 +287,26 @@ run_rate_dlnm_spec <- function(
     ) / (2 * 1.96)
   }
 
+  lag_temperature_surface <- make_dlnm_lag_temperature_surface(
+    pred = pred,
+    grid = grid,
+    label = label,
+    model = model,
+    reference = reference,
+    center = center,
+    hot_temp = hot_temp,
+    effect_prefix = "rate_ratio",
+    extra_cols = list(analysis_period = ANALYSIS_PERIOD_LABEL)
+  )
+
   list(
     result = result,
     curve = curve,
     reduced_coef = reduced_coef,
     reduced_vcov = reduced_vcov,
     lag_summary = lag_summary,
-    lag_specific = lag_specific
+    lag_specific = lag_specific,
+    lag_temperature_surface = lag_temperature_surface
   )
 }
 
@@ -441,6 +454,7 @@ reduced_coef_df <- do.call(rbind, lapply(fits, `[[`, "reduced_coef"))
 reduced_vcov_df <- do.call(rbind, lapply(fits, `[[`, "reduced_vcov"))
 lag_summary_df <- do.call(rbind, lapply(fits, `[[`, "lag_summary"))
 lag_specific_df <- do.call(rbind, lapply(fits, `[[`, "lag_specific"))
+lag_temperature_surface_df <- do.call(rbind, lapply(fits, `[[`, "lag_temperature_surface"))
 
 readr::write_csv(results_df, file.path(output_dir, "ohca_icu_admission_rate_dlnm_results.csv"))
 readr::write_csv(curves_df, file.path(output_dir, "ohca_icu_admission_rate_dlnm_curves.csv"))
@@ -448,6 +462,13 @@ readr::write_csv(reduced_coef_df, file.path(output_dir, "ohca_icu_admission_rate
 readr::write_csv(reduced_vcov_df, file.path(output_dir, "ohca_icu_admission_rate_dlnm_reduced_vcov.csv"))
 readr::write_csv(lag_summary_df, file.path(output_dir, "ohca_icu_admission_rate_dlnm_lag_summaries.csv"))
 readr::write_csv(lag_specific_df, file.path(output_dir, "ohca_icu_admission_rate_dlnm_lag_specific_summaries.csv"))
+readr::write_csv(lag_temperature_surface_df, file.path(output_dir, "ohca_icu_admission_rate_dlnm_lag_temperature_surface.csv"))
+invisible(write_dlnm_lag_temperature_surface_pdf(
+  lag_temperature_surface_df,
+  file.path(output_dir, "ohca_icu_admission_rate_dlnm_lag_temperature_surface_plots.pdf"),
+  effect_col = "rate_ratio",
+  title_prefix = paste("Rate DLNM", ANALYSIS_PERIOD_LABEL)
+))
 readr::write_csv(rate_denominator_summary, file.path(output_dir, "ohca_icu_admission_rate_denominator_summary.csv"))
 readr::write_csv(rate_time_series, file.path(output_dir, "ohca_icu_admission_rate_daily_timeseries.csv"))
 

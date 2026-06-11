@@ -272,4 +272,53 @@ if (length(lag_specific_files) > 0) {
   write.csv(pooled_lag_specific, file.path(output_dir, "pooled_dlnm_random_effects_lag_specific_summaries.csv"), row.names = FALSE)
 }
 
+lag_temperature_surface_files <- list.files(input_dir, pattern = "_lag_temperature_surface\\.csv$", full.names = TRUE)
+if (length(lag_temperature_surface_files) > 0) {
+  site_lag_temperature_surface <- normalize_effect_columns(read_csv_bind_rows(lag_temperature_surface_files))
+
+  if (!all(c("log_rr", "log_rr_se") %in% names(site_lag_temperature_surface))) {
+    site_lag_temperature_surface$log_rr <- log(site_lag_temperature_surface$rr)
+    site_lag_temperature_surface$log_rr_se <- (log(site_lag_temperature_surface$rr_high) - log(site_lag_temperature_surface$rr_low)) / (2 * 1.96)
+  }
+
+  surface_group_cols <- c("export_family", "analysis_period", "stratum", "model", "reference_type", "tmax_mean_c", "lag", "lag_label")
+  surface_group_cols <- surface_group_cols[surface_group_cols %in% names(site_lag_temperature_surface)]
+  surface_groups <- unique(site_lag_temperature_surface[, surface_group_cols, drop = FALSE])
+  surface_group_key <- apply(
+    site_lag_temperature_surface[, surface_group_cols, drop = FALSE],
+    1,
+    function(row) paste(ifelse(is.na(row), "<NA>", as.character(row)), collapse = "\r")
+  )
+  surface_splits <- split(seq_len(nrow(site_lag_temperature_surface)), surface_group_key)
+  surface_rows <- vector("list", length(surface_splits))
+  for (i in seq_along(surface_splits)) {
+    dat <- site_lag_temperature_surface[surface_splits[[i]], , drop = FALSE]
+    g <- dat[1, surface_group_cols, drop = FALSE]
+    pooled <- pool_der_simonian_laird(dat$log_rr, dat$log_rr_se)
+    if (is.null(pooled)) next
+    for (col in surface_group_cols) pooled[[col]] <- g[[col]]
+    surface_rows[[i]] <- pooled
+  }
+
+  pooled_lag_temperature_surface <- do.call(rbind, surface_rows)
+  if (is.null(pooled_lag_temperature_surface)) {
+    pooled_lag_temperature_surface <- data.frame()
+  } else {
+    pooled_lag_temperature_surface <- pooled_lag_temperature_surface[
+      order(
+        pooled_lag_temperature_surface$export_family,
+        pooled_lag_temperature_surface$stratum,
+        pooled_lag_temperature_surface$model,
+        pooled_lag_temperature_surface$reference_type,
+        pooled_lag_temperature_surface$lag,
+        pooled_lag_temperature_surface$tmax_mean_c
+      ),
+    ]
+    pooled_lag_temperature_surface <- pooled_lag_temperature_surface[, c(surface_group_cols, setdiff(names(pooled_lag_temperature_surface), surface_group_cols))]
+  }
+
+  write.csv(site_lag_temperature_surface, file.path(output_dir, "all_site_dlnm_lag_temperature_surface.csv"), row.names = FALSE)
+  write.csv(pooled_lag_temperature_surface, file.path(output_dir, "pooled_dlnm_random_effects_lag_temperature_surface.csv"), row.names = FALSE)
+}
+
 message("Wrote pooled federated DLNM results to ", output_dir)

@@ -445,3 +445,94 @@ fmt_median_iqr <- function(x) {
     stats::quantile(x, 0.75, na.rm = TRUE, names = FALSE)
   )
 }
+
+make_dlnm_lag_temperature_surface <- function(pred, grid, label, model, reference, center, hot_temp, effect_prefix = "rr", extra_cols = NULL) {
+  if (is.null(pred$matRRfit) || is.null(pred$matRRlow) || is.null(pred$matRRhigh)) return(NULL)
+
+  lag_names <- colnames(pred$matRRfit)
+  if (is.null(lag_names)) lag_names <- paste0("lag", seq_len(ncol(pred$matRRfit)) - 1L)
+  lag_values <- suppressWarnings(as.integer(gsub("[^0-9]", "", lag_names)))
+  if (any(!is.finite(lag_values))) lag_values <- seq_len(ncol(pred$matRRfit)) - 1L
+
+  out <- expand.grid(
+    tmax_mean_c = grid,
+    lag = lag_values,
+    KEEP.OUT.ATTRS = FALSE,
+    stringsAsFactors = FALSE
+  )
+
+  out$stratum <- label
+  out$model <- model
+  out$reference_type <- reference
+  out$reference_temp_c <- center
+  out$hot_temp_c <- hot_temp
+  out$lag_label <- paste0("Lag ", out$lag)
+  out[[effect_prefix]] <- as.numeric(pred$matRRfit)
+  out[[paste0(effect_prefix, "_low")]] <- as.numeric(pred$matRRlow)
+  out[[paste0(effect_prefix, "_high")]] <- as.numeric(pred$matRRhigh)
+  out[[paste0("log_", effect_prefix)]] <- log(out[[effect_prefix]])
+  out[[paste0("log_", effect_prefix, "_se")]] <- (
+    log(out[[paste0(effect_prefix, "_high")]]) - log(out[[paste0(effect_prefix, "_low")]])
+  ) / (2 * 1.96)
+
+  if (!is.null(extra_cols)) {
+    for (name in names(extra_cols)) out[[name]] <- extra_cols[[name]]
+  }
+
+  leading <- c(names(extra_cols), "stratum", "model", "reference_type", "reference_temp_c", "hot_temp_c", "tmax_mean_c", "lag", "lag_label")
+  out[, c(leading[leading %in% names(out)], setdiff(names(out), leading)), drop = FALSE]
+}
+
+write_dlnm_lag_temperature_surface_pdf <- function(surface, path, effect_col = "rr", title_prefix = "DLNM") {
+  if (is.null(surface) || nrow(surface) == 0L || !effect_col %in% names(surface)) return(FALSE)
+
+  required <- c("stratum", "model", "reference_type", "tmax_mean_c", "lag", effect_col)
+  if (!all(required %in% names(surface))) return(FALSE)
+
+  surface <- surface[is.finite(surface$tmax_mean_c) & is.finite(surface$lag) & is.finite(surface[[effect_col]]), , drop = FALSE]
+  if (nrow(surface) == 0L) return(FALSE)
+
+  group_keys <- unique(surface[, c("stratum", "model", "reference_type"), drop = FALSE])
+  grDevices::pdf(path, width = 8.5, height = 7)
+  on.exit(grDevices::dev.off(), add = TRUE)
+
+  for (i in seq_len(nrow(group_keys))) {
+    key <- group_keys[i, , drop = FALSE]
+    dat <- surface[
+      surface$stratum == key$stratum &
+        surface$model == key$model &
+        surface$reference_type == key$reference_type,
+      ,
+      drop = FALSE
+    ]
+    temps <- sort(unique(dat$tmax_mean_c))
+    lags <- sort(unique(dat$lag))
+    if (length(temps) < 2L || length(lags) < 2L) next
+
+    z <- matrix(NA_real_, nrow = length(temps), ncol = length(lags))
+    temp_index <- match(dat$tmax_mean_c, temps)
+    lag_index <- match(dat$lag, lags)
+    z[cbind(temp_index, lag_index)] <- dat[[effect_col]]
+    if (all(is.na(z))) next
+
+    zlim <- range(z, finite = TRUE)
+    graphics::persp(
+      x = temps,
+      y = lags,
+      z = z,
+      theta = 35,
+      phi = 25,
+      expand = 0.65,
+      col = "lightblue",
+      border = "grey70",
+      ticktype = "detailed",
+      xlab = "Temperature (C)",
+      ylab = "Lag day",
+      zlab = "Relative risk",
+      zlim = zlim,
+      main = paste(title_prefix, key$stratum, key$model, key$reference_type, sep = " | ")
+    )
+  }
+
+  TRUE
+}

@@ -181,7 +181,7 @@ run_case_crossover_dlnm <- function(
   if (!is.null(skip_reason)) {
     if (!allow_skip) stop(skip_reason, call. = FALSE)
     skipped <- make_nonestimable_result(df, label, model, reference, skip_reason, omitted_terms)
-    if (return_curve) return(list(result = skipped, curve = NULL, reduced_coef = NULL, reduced_vcov = NULL, lag_summary = NULL, lag_specific = NULL))
+    if (return_curve) return(list(result = skipped, curve = NULL, reduced_coef = NULL, reduced_vcov = NULL, lag_summary = NULL, lag_specific = NULL, lag_temperature_surface = NULL))
     return(skipped)
   }
 
@@ -200,7 +200,7 @@ run_case_crossover_dlnm <- function(
   if (inherits(cb_temp, "error")) {
     if (!allow_skip) stop(cb_temp)
     skipped <- make_nonestimable_result(df, label, model, reference, paste0("DLNM crossbasis failed: ", conditionMessage(cb_temp)), omitted_terms)
-    if (return_curve) return(list(result = skipped, curve = NULL, reduced_coef = NULL, reduced_vcov = NULL, lag_summary = NULL, lag_specific = NULL))
+    if (return_curve) return(list(result = skipped, curve = NULL, reduced_coef = NULL, reduced_vcov = NULL, lag_summary = NULL, lag_specific = NULL, lag_temperature_surface = NULL))
     return(skipped)
   }
 
@@ -222,7 +222,7 @@ run_case_crossover_dlnm <- function(
   if (inherits(fit, "error")) {
     if (!allow_skip) stop(fit)
     skipped <- make_nonestimable_result(df, label, model, reference, paste0("Conditional logistic DLNM failed: ", conditionMessage(fit)), omitted_terms)
-    if (return_curve) return(list(result = skipped, curve = NULL, reduced_coef = NULL, reduced_vcov = NULL, lag_summary = NULL, lag_specific = NULL))
+    if (return_curve) return(list(result = skipped, curve = NULL, reduced_coef = NULL, reduced_vcov = NULL, lag_summary = NULL, lag_specific = NULL, lag_temperature_surface = NULL))
     return(skipped)
   }
 
@@ -240,7 +240,7 @@ run_case_crossover_dlnm <- function(
   if (inherits(prediction_objects, "error")) {
     if (!allow_skip) stop(prediction_objects)
     skipped <- make_nonestimable_result(df, label, model, reference, paste0("DLNM prediction failed: ", conditionMessage(prediction_objects)), omitted_terms)
-    if (return_curve) return(list(result = skipped, curve = NULL, reduced_coef = NULL, reduced_vcov = NULL, lag_summary = NULL, lag_specific = NULL))
+    if (return_curve) return(list(result = skipped, curve = NULL, reduced_coef = NULL, reduced_vcov = NULL, lag_summary = NULL, lag_specific = NULL, lag_temperature_surface = NULL))
     return(skipped)
   }
 
@@ -360,6 +360,18 @@ run_case_crossover_dlnm <- function(
       )
   }
 
+  lag_temperature_surface <- make_dlnm_lag_temperature_surface(
+    pred = pred,
+    grid = grid,
+    label = label,
+    model = model,
+    reference = reference,
+    center = center,
+    hot_temp = hot_temp,
+    effect_prefix = "rr",
+    extra_cols = list(analysis_period = ANALYSIS_PERIOD_LABEL)
+  )
+
   if (return_curve) {
     return(list(
       result = result,
@@ -367,7 +379,8 @@ run_case_crossover_dlnm <- function(
       reduced_coef = reduced_coef,
       reduced_vcov = reduced_vcov,
       lag_summary = lag_summary,
-      lag_specific = lag_specific
+      lag_specific = lag_specific,
+      lag_temperature_surface = lag_temperature_surface
     ))
   }
 
@@ -432,6 +445,7 @@ reduced_coef_rows <- list()
 reduced_vcov_rows <- list()
 lag_summary_rows <- list()
 lag_specific_rows <- list()
+lag_temperature_surface_rows <- list()
 
 run_and_store <- function(key, df, label, model, reference, adjust_pollution = FALSE, allow_skip = FALSE, min_ohca = 0L, min_event_days = 0L) {
   fit <- run_case_crossover_dlnm(
@@ -451,6 +465,7 @@ run_and_store <- function(key, df, label, model, reference, adjust_pollution = F
   if (!is.null(fit$reduced_vcov)) reduced_vcov_rows[[key]] <<- fit$reduced_vcov
   if (!is.null(fit$lag_summary)) lag_summary_rows[[key]] <<- fit$lag_summary
   if (!is.null(fit$lag_specific)) lag_specific_rows[[key]] <<- fit$lag_specific
+  if (!is.null(fit$lag_temperature_surface)) lag_temperature_surface_rows[[key]] <<- fit$lag_temperature_surface
   invisible(fit)
 }
 
@@ -510,6 +525,7 @@ reduced_coef_df <- bind_rows(reduced_coef_rows)
 reduced_vcov_df <- bind_rows(reduced_vcov_rows)
 lag_summary_df <- bind_rows(lag_summary_rows)
 lag_specific_df <- bind_rows(lag_specific_rows)
+lag_temperature_surface_df <- bind_rows(lag_temperature_surface_rows)
 
 readr::write_csv(results_df, file.path(output_dir, "case_crossover_dlnm_results.csv"))
 readr::write_csv(curves_df, file.path(output_dir, "case_crossover_dlnm_curves.csv"))
@@ -517,6 +533,13 @@ readr::write_csv(reduced_coef_df, file.path(output_dir, "case_crossover_dlnm_red
 readr::write_csv(reduced_vcov_df, file.path(output_dir, "case_crossover_dlnm_reduced_vcov.csv"))
 readr::write_csv(lag_summary_df, file.path(output_dir, "case_crossover_dlnm_lag_summaries.csv"))
 readr::write_csv(lag_specific_df, file.path(output_dir, "case_crossover_dlnm_lag_specific_summaries.csv"))
+readr::write_csv(lag_temperature_surface_df, file.path(output_dir, "case_crossover_dlnm_lag_temperature_surface.csv"))
+invisible(write_dlnm_lag_temperature_surface_pdf(
+  lag_temperature_surface_df,
+  file.path(output_dir, "case_crossover_dlnm_lag_temperature_surface_plots.pdf"),
+  effect_col = "rr",
+  title_prefix = paste("Case-crossover DLNM", ANALYSIS_PERIOD_LABEL)
+))
 readr::write_csv(referent_summary, file.path(output_dir, "case_crossover_referent_set_summary.csv"))
 
 print(results_df)

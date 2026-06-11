@@ -58,11 +58,13 @@ exports <- list(
   list(file.path(manuscript_dir, "manuscript_dlnm_curves.csv"), "dlnm_curves"),
   list(file.path(manuscript_dir, "manuscript_dlnm_lag_summaries.csv"), "dlnm_lag_summaries"),
   list(file.path(manuscript_dir, "manuscript_dlnm_lag_specific_summaries.csv"), "dlnm_lag_specific_summaries"),
+  list(file.path(manuscript_dir, "manuscript_dlnm_lag_temperature_surface.csv"), "dlnm_lag_temperature_surface"),
   list(file.path(manuscript_dir, "manuscript_dlnm_reduced_coefficients.csv"), "dlnm_reduced_coefficients"),
   list(file.path(manuscript_dir, "manuscript_dlnm_reduced_vcov.csv"), "dlnm_reduced_vcov"),
   list(file.path(manuscript_dir, "manuscript_dlnm_time_adjustment_sensitivity.csv"), "dlnm_time_sensitivity"),
   list(file.path(manuscript_dir, "manuscript_dlnm_time_adjustment_lag_summaries.csv"), "dlnm_time_sensitivity_lag_summaries"),
   list(file.path(manuscript_dir, "manuscript_dlnm_time_adjustment_lag_specific_summaries.csv"), "dlnm_time_sensitivity_lag_specific_summaries"),
+  list(file.path(manuscript_dir, "manuscript_dlnm_time_adjustment_lag_temperature_surface.csv"), "dlnm_time_sensitivity_lag_temperature_surface"),
   list(file.path(lag_diag_dir, "lag30_diagnostic_summary.csv"), "lag30_diagnostic_summary"),
   list(file.path(lag_diag_dir, "lag30_temperature_lag_rr_surface.csv"), "lag30_temperature_lag_rr_surface"),
   list(file.path(lag_diag_dir, "lag30_hot_temperature_lag_specific_rr.csv"), "lag30_hot_temperature_lag_specific_rr"),
@@ -77,6 +79,7 @@ exports <- list(
   list(file.path(rate_dir, "ohca_icu_admission_rate_dlnm_curves.csv"), "ohca_icu_admission_rate_dlnm_curves"),
   list(file.path(rate_dir, "ohca_icu_admission_rate_dlnm_lag_summaries.csv"), "ohca_icu_admission_rate_dlnm_lag_summaries"),
   list(file.path(rate_dir, "ohca_icu_admission_rate_dlnm_lag_specific_summaries.csv"), "ohca_icu_admission_rate_dlnm_lag_specific_summaries"),
+  list(file.path(rate_dir, "ohca_icu_admission_rate_dlnm_lag_temperature_surface.csv"), "ohca_icu_admission_rate_dlnm_lag_temperature_surface"),
   list(file.path(rate_dir, "ohca_icu_admission_rate_dlnm_reduced_coefficients.csv"), "ohca_icu_admission_rate_dlnm_reduced_coefficients"),
   list(file.path(rate_dir, "ohca_icu_admission_rate_dlnm_reduced_vcov.csv"), "ohca_icu_admission_rate_dlnm_reduced_vcov"),
   list(file.path(rate_dir, "ohca_icu_admission_rate_denominator_summary.csv"), "ohca_icu_admission_rate_denominator_summary"),
@@ -85,6 +88,7 @@ exports <- list(
   list(file.path(case_crossover_dir, "case_crossover_dlnm_curves.csv"), "case_crossover_dlnm_curves"),
   list(file.path(case_crossover_dir, "case_crossover_dlnm_lag_summaries.csv"), "case_crossover_dlnm_lag_summaries"),
   list(file.path(case_crossover_dir, "case_crossover_dlnm_lag_specific_summaries.csv"), "case_crossover_dlnm_lag_specific_summaries"),
+  list(file.path(case_crossover_dir, "case_crossover_dlnm_lag_temperature_surface.csv"), "case_crossover_dlnm_lag_temperature_surface"),
   list(file.path(case_crossover_dir, "case_crossover_dlnm_reduced_coefficients.csv"), "case_crossover_dlnm_reduced_coefficients"),
   list(file.path(case_crossover_dir, "case_crossover_dlnm_reduced_vcov.csv"), "case_crossover_dlnm_reduced_vcov"),
   list(file.path(case_crossover_dir, "case_crossover_referent_set_summary.csv"), "case_crossover_referent_set_summary"),
@@ -161,5 +165,13 @@ figure_paths <- file.path(figure_dir, c(
   "figure_ohca_icu_competing_risk_awake_extubated_72h_cif_by_tmax_quartile.png"
 ))
 invisible(lapply(figure_paths, copy_figure))
+
+dlnm_surface_plot_paths <- c(
+  file.path(manuscript_dir, "manuscript_dlnm_lag_temperature_surface_plots.pdf"),
+  file.path(manuscript_dir, "manuscript_dlnm_time_adjustment_lag_temperature_surface_plots.pdf"),
+  file.path(rate_dir, "ohca_icu_admission_rate_dlnm_lag_temperature_surface_plots.pdf"),
+  file.path(case_crossover_dir, "case_crossover_dlnm_lag_temperature_surface_plots.pdf")
+)
+invisible(lapply(dlnm_surface_plot_paths, copy_figure))
 
 message("Wrote DLNM and post-ICU federated exports to ", output_dir)
