@@ -186,4 +186,20 @@ pdf_path <- file.path(figure_dir, "figure3_multinomial_phenotype_model.pdf")
 ggplot2::ggsave(png_path, figure3, width = 10.8, height = 4.9, dpi = 600)
 ggplot2::ggsave(pdf_path, figure3, width = 10.8, height = 4.9)
 
-message("Wrote multinomial phenotype model figure to ", png_path, " and ", pdf_path)
+figure3_stacked <- figure3 +
+  ggplot2::facet_wrap(
+    ggplot2::vars(.data$phenotype),
+    ncol = 1,
+    labeller = ggplot2::as_labeller(facet_labels)
+  ) +
+  ggplot2::theme(
+    panel.spacing.y = grid::unit(1.1, "lines"),
+    panel.spacing.x = grid::unit(0.8, "lines")
+  )
+
+stacked_png_path <- file.path(figure_dir, "figure3_multinomial_phenotype_model_stacked.png")
+stacked_pdf_path <- file.path(figure_dir, "figure3_multinomial_phenotype_model_stacked.pdf")
+ggplot2::ggsave(stacked_png_path, figure3_stacked, width = 6.8, height = 9.6, dpi = 600)
+ggplot2::ggsave(stacked_pdf_path, figure3_stacked, width = 6.8, height = 9.6)
+
+message("Wrote multinomial phenotype model figures to ", png_path, ", ", pdf_path, ", ", stacked_png_path, ", and ", stacked_pdf_path)

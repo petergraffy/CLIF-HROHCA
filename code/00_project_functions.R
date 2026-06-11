@@ -187,6 +187,18 @@ is_female <- function(x) {
   normalize_category(x) == "female"
 }
 
+is_hispanic_ethnicity <- function(x) {
+  ethnicity <- normalize_category(x)
+  stringr::str_detect(ethnicity, "hispanic|latino|latina|latinx") &
+    !stringr::str_detect(ethnicity, "not hispanic|non[- ]?hispanic|not latino|non[- ]?latino")
+}
+
+is_non_hispanic_ethnicity <- function(x) {
+  ethnicity <- normalize_category(x)
+  stringr::str_detect(ethnicity, "not hispanic|non[- ]?hispanic|not latino|non[- ]?latino") &
+    !is_hispanic_ethnicity(x)
+}
+
 is_expired_discharge <- function(x) {
   stringr::str_detect(normalize_category(x), "expired|death|dead")
 }

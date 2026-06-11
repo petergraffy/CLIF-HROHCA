@@ -44,6 +44,7 @@ forest <- dplyr::bind_rows(overall, strata) |>
       .data$stratum %in% c("Male", "Female") ~ "Sex",
       .data$stratum %in% c("<65", ">=65") ~ "Age",
       .data$stratum %in% c("Black", "Non-Black") ~ "Race",
+      .data$stratum %in% c("Hispanic", "Non-Hispanic") ~ "Ethnicity",
       TRUE ~ "Other"
     ),
     label = dplyr::case_when(
@@ -59,12 +60,14 @@ forest <- dplyr::bind_rows(overall, strata) |>
       .data$stratum == ">=65" ~ 7,
       .data$stratum == "Black" ~ 9,
       .data$stratum == "Non-Black" ~ 10,
+      .data$stratum == "Hispanic" ~ 12,
+      .data$stratum == "Non-Hispanic" ~ 13,
       TRUE ~ 99
     ),
     rr_label = fmt_rr(.data$ratio, .data$ratio_low, .data$ratio_high),
     rr_label_plot = sprintf("%.2f\n(%.2f, %.2f)", .data$ratio, .data$ratio_low, .data$ratio_high),
     i2_label = fmt_i2(.data$i2),
-    group = factor(.data$group, levels = c("Overall", "Sex", "Age", "Race"))
+    group = factor(.data$group, levels = c("Overall", "Sex", "Age", "Race", "Ethnicity"))
   ) |>
   dplyr::arrange(.data$row_order)
 
@@ -73,16 +76,16 @@ if (nrow(forest) == 0) {
 }
 
 group_headers <- data.frame(
-  group = c("Sex", "Age", "Race"),
-  y = c(5.75, 2.75, -0.25),
-  label = c("Sex", "Age", "Race"),
+  group = c("Sex", "Age", "Race", "Ethnicity"),
+  y = c(5.75, 2.75, -0.25, -3.25),
+  label = c("Sex", "Age", "Race", "Ethnicity"),
   stringsAsFactors = FALSE
 )
 
 forest <- forest |>
   dplyr::mutate(
     label = factor(.data$label, levels = unique(.data$label)),
-    section = factor(as.character(.data$group), levels = c("Overall", "Sex", "Age", "Race")),
+    section = factor(as.character(.data$group), levels = c("Overall", "Sex", "Age", "Race", "Ethnicity")),
     label_y = .data$ratio_high * 1.08
   )
 

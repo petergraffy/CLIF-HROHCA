@@ -586,6 +586,11 @@ cohort <- read.csv(ohca_cohort_path, stringsAsFactors = FALSE)
 cohort$admission_date <- as.Date(cohort$admission_date)
 cohort$age_group <- ifelse(as.numeric(cohort$age_at_admission) >= 65, ">=65", "<65")
 cohort$race_group <- ifelse(is_black_race(cohort$race_category), "Black", "Non-Black")
+cohort$ethnicity_group <- ifelse(
+  is_hispanic_ethnicity(cohort$ethnicity_category),
+  "Hispanic",
+  ifelse(is_non_hispanic_ethnicity(cohort$ethnicity_category), "Non-Hispanic", NA_character_)
+)
 
 make_stratum_daily_counts <- function(subset_df, label) {
   out <- aggregate(hospitalization_id ~ admission_date, data = subset_df, FUN = function(x) length(unique(x)))
@@ -601,7 +606,9 @@ strata_counts <- list(
   age_lt65 = make_stratum_daily_counts(cohort[cohort$age_group == "<65", ], "<65"),
   age_ge65 = make_stratum_daily_counts(cohort[cohort$age_group == ">=65", ], ">=65"),
   race_black = make_stratum_daily_counts(cohort[cohort$race_group == "Black", ], "Black"),
-  race_nonblack = make_stratum_daily_counts(cohort[cohort$race_group == "Non-Black", ], "Non-Black")
+  race_nonblack = make_stratum_daily_counts(cohort[cohort$race_group == "Non-Black", ], "Non-Black"),
+  ethnicity_hispanic = make_stratum_daily_counts(cohort[cohort$ethnicity_group == "Hispanic", ], "Hispanic"),
+  ethnicity_nonhispanic = make_stratum_daily_counts(cohort[cohort$ethnicity_group == "Non-Hispanic", ], "Non-Hispanic")
 )
 
 results <- list()
@@ -682,7 +689,7 @@ time_sensitivity_lag_summary_df <- bind_nonnull(lapply(time_sensitivity_fits, `[
 time_sensitivity_lag_specific_df <- bind_nonnull(lapply(time_sensitivity_fits, `[[`, "lag_specific"))
 time_sensitivity_lag_temperature_surface_df <- bind_nonnull(lapply(time_sensitivity_fits, `[[`, "lag_temperature_surface"))
 
-for (nm in c("male","female","age_lt65","age_ge65","race_black","race_nonblack")) {
+for (nm in c("male","female","age_lt65","age_ge65","race_black","race_nonblack","ethnicity_hispanic","ethnicity_nonhispanic")) {
   counts_df <- strata_counts[[nm]]
   counts_df$admission_date <- as.Date(counts_df$admission_date)
   merged <- merge(all_dates, counts_df[, c("admission_date","ohca_admissions")], by = "admission_date", all.x = TRUE, sort = TRUE)

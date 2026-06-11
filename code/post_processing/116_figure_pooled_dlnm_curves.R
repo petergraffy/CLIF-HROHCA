@@ -71,13 +71,13 @@ prepare_plot_data <- function(family, overall_only = FALSE) {
     filter(.data$export_family == family) |>
     mutate(
       model_label = pretty_model(.data$model),
-      stratum = factor(.data$stratum, levels = c("Overall", "Male", "Female", "<65", ">=65", "Black", "Non-Black"))
+      stratum = factor(.data$stratum, levels = c("Overall", "Male", "Female", "<65", ">=65", "Black", "Non-Black", "Hispanic", "Non-Hispanic"))
     )
   pooled_dat <- pooled |>
     filter(.data$export_family == family) |>
     mutate(
       model_label = pretty_model(.data$model),
-      stratum = factor(.data$stratum, levels = c("Overall", "Male", "Female", "<65", ">=65", "Black", "Non-Black"))
+      stratum = factor(.data$stratum, levels = c("Overall", "Male", "Female", "<65", ">=65", "Black", "Non-Black", "Hispanic", "Non-Hispanic"))
     )
   if (overall_only) {
     site_dat <- site_dat |> filter(.data$stratum == "Overall")

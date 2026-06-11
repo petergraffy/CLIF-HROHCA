@@ -343,6 +343,11 @@ cohort <- read.csv(ohca_cohort_path, stringsAsFactors = FALSE)
 cohort$admission_date <- as.Date(cohort$admission_date)
 cohort$age_group <- ifelse(as.numeric(cohort$age_at_admission) >= 65, ">=65", "<65")
 cohort$race_group <- ifelse(is_black_race(cohort$race_category), "Black", "Non-Black")
+cohort$ethnicity_group <- ifelse(
+  is_hispanic_ethnicity(cohort$ethnicity_category),
+  "Hispanic",
+  ifelse(is_non_hispanic_ethnicity(cohort$ethnicity_category), "Non-Hispanic", NA_character_)
+)
 
 make_stratum_model_df <- function(subset_df) {
   counts <- aggregate(hospitalization_id ~ admission_date, data = subset_df, FUN = function(x) length(unique(x)))
@@ -420,7 +425,9 @@ strata_specs <- list(
   age_lt65 = list(label = "<65", df = cohort[cohort$age_group == "<65", ]),
   age_ge65 = list(label = ">=65", df = cohort[cohort$age_group == ">=65", ]),
   race_black = list(label = "Black", df = cohort[cohort$race_group == "Black", ]),
-  race_nonblack = list(label = "Non-Black", df = cohort[cohort$race_group == "Non-Black", ])
+  race_nonblack = list(label = "Non-Black", df = cohort[cohort$race_group == "Non-Black", ]),
+  ethnicity_hispanic = list(label = "Hispanic", df = cohort[cohort$ethnicity_group == "Hispanic", ]),
+  ethnicity_nonhispanic = list(label = "Non-Hispanic", df = cohort[cohort$ethnicity_group == "Non-Hispanic", ])
 )
 
 for (nm in names(strata_specs)) {

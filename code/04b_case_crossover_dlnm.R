@@ -90,7 +90,8 @@ make_referent_dates <- function(cases, all_dates) {
       county_fips = case_row$county_fips[[1]],
       sex_category = case_row$sex_category[[1]],
       age_group = case_row$age_group[[1]],
-      race_group = case_row$race_group[[1]]
+      race_group = case_row$race_group[[1]],
+      ethnicity_group = case_row$ethnicity_group[[1]]
     )
   }))
 }
@@ -399,7 +400,12 @@ ohca <- readr::read_csv(
     month = as.integer(format(.data$admission_date, "%m")),
     dow = weekdays(.data$admission_date),
     age_group = ifelse(suppressWarnings(as.numeric(.data$age_at_admission)) >= 65, ">=65", "<65"),
-    race_group = ifelse(is_black_race(.data$race_category), "Black", "Non-Black")
+    race_group = ifelse(is_black_race(.data$race_category), "Black", "Non-Black"),
+    ethnicity_group = ifelse(
+      is_hispanic_ethnicity(.data$ethnicity_category),
+      "Hispanic",
+      ifelse(is_non_hispanic_ethnicity(.data$ethnicity_category), "Non-Hispanic", NA_character_)
+    )
   ) |>
   filter(!is.na(.data$admission_date), !is.na(.data$county_fips)) |>
   filter_analysis_period_cases()
@@ -479,7 +485,9 @@ strata_specs <- list(
   age_lt65 = list(label = "<65", mask = referents$age_group == "<65"),
   age_ge65 = list(label = ">=65", mask = referents$age_group == ">=65"),
   race_black = list(label = "Black", mask = referents$race_group == "Black"),
-  race_nonblack = list(label = "Non-Black", mask = referents$race_group == "Non-Black")
+  race_nonblack = list(label = "Non-Black", mask = referents$race_group == "Non-Black"),
+  ethnicity_hispanic = list(label = "Hispanic", mask = referents$ethnicity_group == "Hispanic"),
+  ethnicity_nonhispanic = list(label = "Non-Hispanic", mask = referents$ethnicity_group == "Non-Hispanic")
 )
 
 for (nm in names(strata_specs)) {

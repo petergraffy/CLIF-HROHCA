@@ -165,6 +165,7 @@ forest <- dplyr::bind_rows(overall, strata) |>
       .data$stratum %in% c("Male", "Female") ~ "Sex",
       .data$stratum %in% c("<65", ">=65") ~ "Age",
       .data$stratum %in% c("Black", "Non-Black") ~ "Race",
+      .data$stratum %in% c("Hispanic", "Non-Hispanic") ~ "Ethnicity",
       TRUE ~ "Other"
     ),
     label = dplyr::case_when(
@@ -180,27 +181,43 @@ forest <- dplyr::bind_rows(overall, strata) |>
       .data$stratum == ">=65" ~ 7,
       .data$stratum == "Black" ~ 9,
       .data$stratum == "Non-Black" ~ 10,
+      .data$stratum == "Hispanic" ~ 12,
+      .data$stratum == "Non-Hispanic" ~ 13,
       TRUE ~ 99
     ),
     rr_label = fmt_rr(.data$ratio, .data$ratio_low, .data$ratio_high),
     i2_label = fmt_i2(.data$i2),
-    group = factor(.data$group, levels = c("Overall", "Sex", "Age", "Race"))
+    group = factor(.data$group, levels = c("Overall", "Sex", "Age", "Race", "Ethnicity"))
   ) |>
   dplyr::arrange(.data$row_order)
 
-forest$y <- c(7, 5, 4, 2, 1, -1, -2)[seq_len(nrow(forest))]
+forest <- forest |>
+  dplyr::mutate(
+    y = dplyr::case_when(
+      .data$stratum == "Overall" ~ 11,
+      .data$stratum == "Male" ~ 9,
+      .data$stratum == "Female" ~ 8,
+      .data$stratum == "<65" ~ 6,
+      .data$stratum == ">=65" ~ 5,
+      .data$stratum == "Black" ~ 3,
+      .data$stratum == "Non-Black" ~ 2,
+      .data$stratum == "Hispanic" ~ 0,
+      .data$stratum == "Non-Hispanic" ~ -1,
+      TRUE ~ -3
+    )
+  )
 readr::write_csv(forest, file.path(figure_dir, "sensitivity_rate_dlnm_stratified_forest_source.csv"))
 
 group_headers <- data.frame(
-  y = c(5.75, 2.75, -0.25),
-  label = c("Sex", "Age", "Race"),
+  y = c(8.5, 5.5, 2.5, -0.5),
+  label = c("Sex", "Age", "Race", "Ethnicity"),
   stringsAsFactors = FALSE
 )
 x_min <- min(0.55, min(forest$ratio_low, na.rm = TRUE) * 0.85)
 x_text <- max(forest$ratio_high, na.rm = TRUE) * 1.25
 x_i2 <- max(forest$ratio_high, na.rm = TRUE) * 2.35
 x_max <- max(4, max(forest$ratio_high, na.rm = TRUE) * 3.6)
-colors <- c("Overall" = "#8f7a2f", "Sex" = "#335c67", "Age" = "#8f7a2f", "Race" = "#9b2f37")
+colors <- c("Overall" = "#8f7a2f", "Sex" = "#335c67", "Age" = "#8f7a2f", "Race" = "#9b2f37", "Ethnicity" = "#457B9D")
 
 rate_forest_fig <- ggplot2::ggplot(forest, ggplot2::aes(x = .data$ratio, y = .data$y, color = .data$group)) +
   ggplot2::geom_vline(xintercept = 1, linetype = "dashed", linewidth = 0.5, color = "grey35") +
@@ -214,11 +231,11 @@ rate_forest_fig <- ggplot2::ggplot(forest, ggplot2::aes(x = .data$ratio, y = .da
   ggplot2::geom_point(size = 3.1) +
   ggplot2::geom_text(ggplot2::aes(x = x_text, label = .data$rr_label), hjust = 0, color = "grey12", size = 3.25, show.legend = FALSE) +
   ggplot2::geom_text(ggplot2::aes(x = x_i2, label = .data$i2_label), hjust = 0, color = "grey25", size = 3.25, show.legend = FALSE) +
-  ggplot2::annotate("text", x = x_text, y = 7.65, label = "RR (95% CI)", hjust = 0, fontface = "bold", size = 3.35, color = "grey12") +
-  ggplot2::annotate("text", x = x_i2, y = 7.65, label = "I2", hjust = 0, fontface = "bold", size = 3.35, color = "grey12") +
+  ggplot2::annotate("text", x = x_text, y = 11.65, label = "RR (95% CI)", hjust = 0, fontface = "bold", size = 3.35, color = "grey12") +
+  ggplot2::annotate("text", x = x_i2, y = 11.65, label = "I2", hjust = 0, fontface = "bold", size = 3.35, color = "grey12") +
   ggplot2::geom_text(data = group_headers, ggplot2::aes(x = x_min, y = .data$y, label = .data$label), inherit.aes = FALSE, hjust = 0, fontface = "bold", color = "grey12", size = 3.35) +
   ggplot2::scale_color_manual(values = colors, guide = "none") +
-  ggplot2::scale_y_continuous(breaks = forest$y, labels = forest$label, limits = c(-2.6, 8), expand = ggplot2::expansion(mult = c(0, 0))) +
+  ggplot2::scale_y_continuous(breaks = forest$y, labels = forest$label, limits = c(-1.6, 12), expand = ggplot2::expansion(mult = c(0, 0))) +
   ggplot2::scale_x_log10(
     breaks = c(0.75, 1, 1.5, 2, 3),
     labels = c("0.75", "1", "1.5", "2", "3"),
