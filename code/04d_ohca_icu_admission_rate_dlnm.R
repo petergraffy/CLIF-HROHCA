@@ -298,6 +298,17 @@ run_rate_dlnm_spec <- function(
     effect_prefix = "rate_ratio",
     extra_cols = list(analysis_period = ANALYSIS_PERIOD_LABEL)
   )
+  contrast_summary <- make_dlnm_contrast_summary(
+    pred = pred,
+    grid = grid,
+    source_x = df$icu_patient_address_mean_tmax_c,
+    label = label,
+    model = model,
+    reference = reference,
+    center = center,
+    effect_prefix = "rate_ratio",
+    extra_cols = list(analysis_period = ANALYSIS_PERIOD_LABEL)
+  )
 
   list(
     result = result,
@@ -306,7 +317,8 @@ run_rate_dlnm_spec <- function(
     reduced_vcov = reduced_vcov,
     lag_summary = lag_summary,
     lag_specific = lag_specific,
-    lag_temperature_surface = lag_temperature_surface
+    lag_temperature_surface = lag_temperature_surface,
+    contrast_summary = contrast_summary
   )
 }
 
@@ -462,6 +474,7 @@ reduced_vcov_df <- do.call(rbind, lapply(fits, `[[`, "reduced_vcov"))
 lag_summary_df <- do.call(rbind, lapply(fits, `[[`, "lag_summary"))
 lag_specific_df <- do.call(rbind, lapply(fits, `[[`, "lag_specific"))
 lag_temperature_surface_df <- do.call(rbind, lapply(fits, `[[`, "lag_temperature_surface"))
+contrast_summary_df <- do.call(rbind, lapply(fits, `[[`, "contrast_summary"))
 
 readr::write_csv(results_df, file.path(output_dir, "ohca_icu_admission_rate_dlnm_results.csv"))
 readr::write_csv(curves_df, file.path(output_dir, "ohca_icu_admission_rate_dlnm_curves.csv"))
@@ -470,6 +483,7 @@ readr::write_csv(reduced_vcov_df, file.path(output_dir, "ohca_icu_admission_rate
 readr::write_csv(lag_summary_df, file.path(output_dir, "ohca_icu_admission_rate_dlnm_lag_summaries.csv"))
 readr::write_csv(lag_specific_df, file.path(output_dir, "ohca_icu_admission_rate_dlnm_lag_specific_summaries.csv"))
 readr::write_csv(lag_temperature_surface_df, file.path(output_dir, "ohca_icu_admission_rate_dlnm_lag_temperature_surface.csv"))
+readr::write_csv(contrast_summary_df, file.path(output_dir, "ohca_icu_admission_rate_dlnm_contrast_summaries.csv"))
 invisible(write_dlnm_lag_temperature_surface_pdf(
   lag_temperature_surface_df,
   file.path(output_dir, "ohca_icu_admission_rate_dlnm_lag_temperature_surface_plots.pdf"),

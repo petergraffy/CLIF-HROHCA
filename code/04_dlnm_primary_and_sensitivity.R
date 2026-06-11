@@ -551,6 +551,16 @@ run_dlnm_spec <- function(
     hot_temp = hot_temp,
     effect_prefix = "rr"
   )
+  contrast_summary <- make_dlnm_contrast_summary(
+    pred = pred,
+    grid = grid,
+    source_x = df$icu_patient_address_mean_tmax_c,
+    label = label,
+    model = model,
+    reference = reference,
+    center = center,
+    effect_prefix = "rr"
+  )
 
   if (return_curve) {
     return(list(
@@ -560,7 +570,8 @@ run_dlnm_spec <- function(
       reduced_vcov = reduced_vcov,
       lag_summary = lag_summary,
       lag_specific = lag_specific,
-      lag_temperature_surface = lag_temperature_surface
+      lag_temperature_surface = lag_temperature_surface,
+      contrast_summary = contrast_summary
     ))
   }
 
@@ -618,6 +629,7 @@ reduced_vcov_rows <- list()
 lag_summary_rows <- list()
 lag_specific_rows <- list()
 lag_temperature_surface_rows <- list()
+contrast_summary_rows <- list()
 
 overall_primary <- run_dlnm_spec(model_df, "Overall", model = "primary_humidity_adjusted", reference = "median", return_curve = TRUE)
 results[["overall_primary"]] <- overall_primary$result
@@ -627,6 +639,7 @@ reduced_vcov_rows[["overall_primary"]] <- overall_primary$reduced_vcov
 lag_summary_rows[["overall_primary"]] <- overall_primary$lag_summary
 lag_specific_rows[["overall_primary"]] <- overall_primary$lag_specific
 lag_temperature_surface_rows[["overall_primary"]] <- overall_primary$lag_temperature_surface
+contrast_summary_rows[["overall_primary"]] <- overall_primary$contrast_summary
 
 overall_pollution <- run_dlnm_spec(
   model_df,
@@ -643,6 +656,7 @@ reduced_vcov_rows[["overall_pollution"]] <- overall_pollution$reduced_vcov
 lag_summary_rows[["overall_pollution"]] <- overall_pollution$lag_summary
 lag_specific_rows[["overall_pollution"]] <- overall_pollution$lag_specific
 lag_temperature_surface_rows[["overall_pollution"]] <- overall_pollution$lag_temperature_surface
+contrast_summary_rows[["overall_pollution"]] <- overall_pollution$contrast_summary
 
 overall_mrt <- run_dlnm_spec(
   model_df,
@@ -659,6 +673,7 @@ reduced_vcov_rows[["overall_mrt"]] <- overall_mrt$reduced_vcov
 lag_summary_rows[["overall_mrt"]] <- overall_mrt$lag_summary
 lag_specific_rows[["overall_mrt"]] <- overall_mrt$lag_specific
 lag_temperature_surface_rows[["overall_mrt"]] <- overall_mrt$lag_temperature_surface
+contrast_summary_rows[["overall_mrt"]] <- overall_mrt$contrast_summary
 
 time_sensitivity_fits <- list()
 for (time_df_candidate in c(3L, 4L, 6L)) {
@@ -688,6 +703,7 @@ time_sensitivity_df <- bind_nonnull(lapply(time_sensitivity_fits, `[[`, "result"
 time_sensitivity_lag_summary_df <- bind_nonnull(lapply(time_sensitivity_fits, `[[`, "lag_summary"))
 time_sensitivity_lag_specific_df <- bind_nonnull(lapply(time_sensitivity_fits, `[[`, "lag_specific"))
 time_sensitivity_lag_temperature_surface_df <- bind_nonnull(lapply(time_sensitivity_fits, `[[`, "lag_temperature_surface"))
+time_sensitivity_contrast_summary_df <- bind_nonnull(lapply(time_sensitivity_fits, `[[`, "contrast_summary"))
 
 for (nm in c("male","female","age_lt65","age_ge65","race_black","race_nonblack","ethnicity_hispanic","ethnicity_nonhispanic")) {
   counts_df <- strata_counts[[nm]]
@@ -718,6 +734,7 @@ for (nm in c("male","female","age_lt65","age_ge65","race_black","race_nonblack",
   if (!is.null(stratified$lag_summary)) lag_summary_rows[[paste0(nm, "_primary")]] <- stratified$lag_summary
   if (!is.null(stratified$lag_specific)) lag_specific_rows[[paste0(nm, "_primary")]] <- stratified$lag_specific
   if (!is.null(stratified$lag_temperature_surface)) lag_temperature_surface_rows[[paste0(nm, "_primary")]] <- stratified$lag_temperature_surface
+  if (!is.null(stratified$contrast_summary)) contrast_summary_rows[[paste0(nm, "_primary")]] <- stratified$contrast_summary
 
   stratified_pollution <- run_dlnm_spec(
     merged,
@@ -738,6 +755,7 @@ for (nm in c("male","female","age_lt65","age_ge65","race_black","race_nonblack",
   if (!is.null(stratified_pollution$lag_summary)) lag_summary_rows[[paste0(nm, "_pollution")]] <- stratified_pollution$lag_summary
   if (!is.null(stratified_pollution$lag_specific)) lag_specific_rows[[paste0(nm, "_pollution")]] <- stratified_pollution$lag_specific
   if (!is.null(stratified_pollution$lag_temperature_surface)) lag_temperature_surface_rows[[paste0(nm, "_pollution")]] <- stratified_pollution$lag_temperature_surface
+  if (!is.null(stratified_pollution$contrast_summary)) contrast_summary_rows[[paste0(nm, "_pollution")]] <- stratified_pollution$contrast_summary
 
   stratified_mrt <- run_dlnm_spec(
     merged,
@@ -758,6 +776,7 @@ for (nm in c("male","female","age_lt65","age_ge65","race_black","race_nonblack",
   if (!is.null(stratified_mrt$lag_summary)) lag_summary_rows[[paste0(nm, "_mrt")]] <- stratified_mrt$lag_summary
   if (!is.null(stratified_mrt$lag_specific)) lag_specific_rows[[paste0(nm, "_mrt")]] <- stratified_mrt$lag_specific
   if (!is.null(stratified_mrt$lag_temperature_surface)) lag_temperature_surface_rows[[paste0(nm, "_mrt")]] <- stratified_mrt$lag_temperature_surface
+  if (!is.null(stratified_mrt$contrast_summary)) contrast_summary_rows[[paste0(nm, "_mrt")]] <- stratified_mrt$contrast_summary
 }
 
 results_df <- do.call(rbind, results)
@@ -767,6 +786,7 @@ reduced_vcov_df <- do.call(rbind, reduced_vcov_rows)
 lag_summary_df <- do.call(rbind, lag_summary_rows)
 lag_specific_df <- do.call(rbind, lag_specific_rows)
 lag_temperature_surface_df <- do.call(rbind, lag_temperature_surface_rows)
+contrast_summary_df <- do.call(rbind, contrast_summary_rows)
 results_df$analysis_period <- ANALYSIS_PERIOD_LABEL
 curves_df$analysis_period <- ANALYSIS_PERIOD_LABEL
 reduced_coef_df$analysis_period <- ANALYSIS_PERIOD_LABEL
@@ -774,10 +794,12 @@ reduced_vcov_df$analysis_period <- ANALYSIS_PERIOD_LABEL
 lag_summary_df$analysis_period <- ANALYSIS_PERIOD_LABEL
 lag_specific_df$analysis_period <- ANALYSIS_PERIOD_LABEL
 lag_temperature_surface_df$analysis_period <- ANALYSIS_PERIOD_LABEL
+contrast_summary_df$analysis_period <- ANALYSIS_PERIOD_LABEL
 time_sensitivity_df$analysis_period <- ANALYSIS_PERIOD_LABEL
 if (nrow(time_sensitivity_lag_summary_df) > 0) time_sensitivity_lag_summary_df$analysis_period <- ANALYSIS_PERIOD_LABEL
 if (nrow(time_sensitivity_lag_specific_df) > 0) time_sensitivity_lag_specific_df$analysis_period <- ANALYSIS_PERIOD_LABEL
 if (nrow(time_sensitivity_lag_temperature_surface_df) > 0) time_sensitivity_lag_temperature_surface_df$analysis_period <- ANALYSIS_PERIOD_LABEL
+if (nrow(time_sensitivity_contrast_summary_df) > 0) time_sensitivity_contrast_summary_df$analysis_period <- ANALYSIS_PERIOD_LABEL
 write.csv(results_df, file.path(output_dir, "manuscript_dlnm_results.csv"), row.names = FALSE)
 write.csv(curves_df, file.path(output_dir, "manuscript_dlnm_curves.csv"), row.names = FALSE)
 write.csv(reduced_coef_df, file.path(output_dir, "manuscript_dlnm_reduced_coefficients.csv"), row.names = FALSE)
@@ -785,6 +807,7 @@ write.csv(reduced_vcov_df, file.path(output_dir, "manuscript_dlnm_reduced_vcov.c
 write.csv(lag_summary_df, file.path(output_dir, "manuscript_dlnm_lag_summaries.csv"), row.names = FALSE)
 write.csv(lag_specific_df, file.path(output_dir, "manuscript_dlnm_lag_specific_summaries.csv"), row.names = FALSE)
 write.csv(lag_temperature_surface_df, file.path(output_dir, "manuscript_dlnm_lag_temperature_surface.csv"), row.names = FALSE)
+write.csv(contrast_summary_df, file.path(output_dir, "manuscript_dlnm_contrast_summaries.csv"), row.names = FALSE)
 invisible(write_dlnm_lag_temperature_surface_pdf(
   lag_temperature_surface_df,
   file.path(output_dir, "manuscript_dlnm_lag_temperature_surface_plots.pdf"),
@@ -806,5 +829,8 @@ if (nrow(time_sensitivity_lag_temperature_surface_df) > 0) {
     effect_col = "rr",
     title_prefix = paste("Count DLNM time sensitivity", ANALYSIS_PERIOD_LABEL)
   ))
+}
+if (nrow(time_sensitivity_contrast_summary_df) > 0) {
+  write.csv(time_sensitivity_contrast_summary_df, file.path(output_dir, "manuscript_dlnm_time_adjustment_contrast_summaries.csv"), row.names = FALSE)
 }
 message("Wrote manuscript-style ", ANALYSIS_PERIOD_LABEL, " DLNM results to ", output_dir)

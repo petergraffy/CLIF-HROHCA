@@ -30,6 +30,7 @@ scripts <- c(
   "04e_rate_lag30_diagnostic_plots.R",
   "04b_case_crossover_dlnm.R",
   "04f_case_crossover_lag30_diagnostic_plots.R",
+  "04g_case_crossover_lag0.R",
   "10_ohca_icu_72h_phenotypes.R",
   "11_ohca_icu_competing_risks.R",
   "12_ohca_icu_imv24_time_to_event.R",

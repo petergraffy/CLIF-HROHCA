@@ -140,7 +140,7 @@ continuous_rows <- lapply(seq_len(nrow(continuous_keys)), function(i) {
 }) |>
   dplyr::bind_rows()
 
-categorical_sections <- c("Demographics", "OHCA mechanism", "Organ support", "Outcome")
+categorical_sections <- c("Demographics", "OHCA mechanism", "Organ support", "Outcome", "Discharge outcomes")
 categorical_keys <- table2_site |>
   dplyr::filter(.data$section %in% categorical_sections, !is.na(.data$level) & .data$level != "") |>
   dplyr::distinct(.data$section, .data$characteristic, .data$level)
@@ -206,7 +206,8 @@ section_order <- c(
   "OHCA mechanism",
   "Organ support",
   "72h phenotype",
-  "Outcome"
+  "Outcome",
+  "Discharge outcomes"
 )
 
 table1 <- dplyr::bind_rows(cohort_row, ed_death_row, continuous_rows, categorical_rows, phenotype_out) |>

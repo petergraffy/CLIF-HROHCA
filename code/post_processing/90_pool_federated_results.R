@@ -53,6 +53,7 @@ pool_der_simonian_laird <- function(est, se) {
 
 infer_export_family <- function(path) {
   file_name <- basename(path)
+  if (grepl("_case_crossover_lag0_", file_name)) return("case_crossover_lag0")
   if (grepl("_case_crossover_dlnm_", file_name)) return("case_crossover_dlnm")
   if (grepl("_ohca_icu_admission_rate_dlnm_", file_name)) return("rate_dlnm")
   "count_dlnm"
@@ -93,7 +94,7 @@ normalize_effect_columns <- function(dat) {
   dat
 }
 
-files <- list.files(input_dir, pattern = "_dlnm_site_estimates\\.csv$", full.names = TRUE)
+files <- list.files(input_dir, pattern = "(_dlnm_site_estimates|_case_crossover_lag0_site_estimates)\\.csv$", full.names = TRUE)
 if (length(files) == 0) {
   stop("No federated site estimate files found in ", input_dir)
 }
@@ -136,7 +137,7 @@ if (is.null(pooled_results)) {
 write.csv(site_results, file.path(output_dir, "all_site_dlnm_estimates.csv"), row.names = FALSE)
 write.csv(pooled_results, file.path(output_dir, "pooled_dlnm_random_effects_results.csv"), row.names = FALSE)
 
-curve_files <- list.files(input_dir, pattern = "_dlnm_curves\\.csv$", full.names = TRUE)
+curve_files <- list.files(input_dir, pattern = "(_dlnm_curves|_case_crossover_lag0_curves)\\.csv$", full.names = TRUE)
 if (length(curve_files) > 0) {
   site_curves <- normalize_effect_columns(read_csv_bind_rows(curve_files))
 
@@ -319,6 +320,57 @@ if (length(lag_temperature_surface_files) > 0) {
 
   write.csv(site_lag_temperature_surface, file.path(output_dir, "all_site_dlnm_lag_temperature_surface.csv"), row.names = FALSE)
   write.csv(pooled_lag_temperature_surface, file.path(output_dir, "pooled_dlnm_random_effects_lag_temperature_surface.csv"), row.names = FALSE)
+}
+
+contrast_files <- list.files(input_dir, pattern = "(_dlnm_contrast_summaries|_case_crossover_lag0_contrast_summaries)\\.csv$", full.names = TRUE)
+if (length(contrast_files) > 0) {
+  site_contrasts <- normalize_effect_columns(read_csv_bind_rows(contrast_files))
+
+  if (!all(c("log_rr", "log_rr_se") %in% names(site_contrasts))) {
+    site_contrasts$log_rr <- log(site_contrasts$cumulative_rr)
+    site_contrasts$log_rr_se <- (log(site_contrasts$cumulative_rr_high) - log(site_contrasts$cumulative_rr_low)) / (2 * 1.96)
+  }
+
+  contrast_group_cols <- c("export_family", "analysis_period", "stratum", "model", "reference_type", "contrast_percentile", "contrast_label")
+  contrast_group_cols <- contrast_group_cols[contrast_group_cols %in% names(site_contrasts)]
+  contrast_groups <- unique(site_contrasts[, contrast_group_cols, drop = FALSE])
+  contrast_group_key <- apply(
+    site_contrasts[, contrast_group_cols, drop = FALSE],
+    1,
+    function(row) paste(ifelse(is.na(row), "<NA>", as.character(row)), collapse = "\r")
+  )
+  contrast_splits <- split(seq_len(nrow(site_contrasts)), contrast_group_key)
+  contrast_rows <- vector("list", length(contrast_splits))
+  for (i in seq_along(contrast_splits)) {
+    dat <- site_contrasts[contrast_splits[[i]], , drop = FALSE]
+    g <- dat[1, contrast_group_cols, drop = FALSE]
+    pooled <- pool_der_simonian_laird(dat$log_rr, dat$log_rr_se)
+    if (is.null(pooled)) next
+    for (col in contrast_group_cols) pooled[[col]] <- g[[col]]
+    contrast_weights <- if ("n_case_events" %in% names(dat)) dat$n_case_events else rep(1, nrow(dat))
+    if (all(!is.finite(contrast_weights)) || sum(contrast_weights, na.rm = TRUE) <= 0) contrast_weights <- rep(1, nrow(dat))
+    pooled$pooled_contrast_temp_c_n_weighted <- stats::weighted.mean(dat$contrast_temp_c, w = contrast_weights, na.rm = TRUE)
+    contrast_rows[[i]] <- pooled
+  }
+
+  pooled_contrasts <- do.call(rbind, contrast_rows)
+  if (is.null(pooled_contrasts)) {
+    pooled_contrasts <- data.frame()
+  } else {
+    pooled_contrasts <- pooled_contrasts[
+      order(
+        pooled_contrasts$export_family,
+        pooled_contrasts$stratum,
+        pooled_contrasts$model,
+        pooled_contrasts$reference_type,
+        pooled_contrasts$contrast_percentile
+      ),
+    ]
+    pooled_contrasts <- pooled_contrasts[, c(contrast_group_cols, "pooled_contrast_temp_c_n_weighted", setdiff(names(pooled_contrasts), c(contrast_group_cols, "pooled_contrast_temp_c_n_weighted")))]
+  }
+
+  write.csv(site_contrasts, file.path(output_dir, "all_site_dlnm_contrast_summaries.csv"), row.names = FALSE)
+  write.csv(pooled_contrasts, file.path(output_dir, "pooled_dlnm_random_effects_contrast_summaries.csv"), row.names = FALSE)
 }
 
 message("Wrote pooled federated DLNM results to ", output_dir)

@@ -495,6 +495,44 @@ make_dlnm_lag_temperature_surface <- function(pred, grid, label, model, referenc
   out[, c(leading[leading %in% names(out)], setdiff(names(out), leading)), drop = FALSE]
 }
 
+make_dlnm_contrast_summary <- function(pred, grid, source_x, label, model, reference, center, probs = c(0.90, 0.95, 0.99), effect_prefix = "rr", extra_cols = NULL) {
+  if (is.null(pred$allRRfit) || is.null(pred$allRRlow) || is.null(pred$allRRhigh)) return(NULL)
+  probs <- probs[is.finite(probs) & probs > 0 & probs < 1]
+  if (length(probs) == 0L) return(NULL)
+
+  rows <- lapply(probs, function(prob) {
+    contrast_temp <- grid[which.min(abs(grid - stats::quantile(source_x, probs = prob, na.rm = TRUE, names = FALSE, type = 7)))]
+    contrast_index <- which.min(abs(grid - contrast_temp))
+    effect <- as.numeric(pred$allRRfit[contrast_index])
+    effect_low <- as.numeric(pred$allRRlow[contrast_index])
+    effect_high <- as.numeric(pred$allRRhigh[contrast_index])
+    out <- data.frame(
+      stratum = label,
+      model = model,
+      reference_type = reference,
+      reference_temp_c = center,
+      contrast_percentile = as.integer(round(prob * 100)),
+      contrast_label = paste0(as.integer(round(prob * 100)), "th percentile"),
+      contrast_temp_c = contrast_temp,
+      stringsAsFactors = FALSE
+    )
+    out[[paste0("cumulative_", effect_prefix)]] <- effect
+    out[[paste0("cumulative_", effect_prefix, "_low")]] <- effect_low
+    out[[paste0("cumulative_", effect_prefix, "_high")]] <- effect_high
+    out[[paste0("log_", effect_prefix)]] <- log(effect)
+    out[[paste0("log_", effect_prefix, "_se")]] <- (log(effect_high) - log(effect_low)) / (2 * 1.96)
+    out
+  })
+
+  out <- do.call(rbind, rows)
+  if (!is.null(extra_cols)) {
+    for (name in names(extra_cols)) out[[name]] <- extra_cols[[name]]
+  }
+
+  leading <- c(names(extra_cols), "stratum", "model", "reference_type", "reference_temp_c", "contrast_percentile", "contrast_label", "contrast_temp_c")
+  out[, c(leading[leading %in% names(out)], setdiff(names(out), leading)), drop = FALSE]
+}
+
 write_dlnm_lag_temperature_surface_pdf <- function(surface, path, effect_col = "rr", title_prefix = "DLNM") {
   if (is.null(surface) || nrow(surface) == 0L || !effect_col %in% names(surface)) return(FALSE)
 

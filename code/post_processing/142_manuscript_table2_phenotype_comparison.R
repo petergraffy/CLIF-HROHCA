@@ -118,6 +118,7 @@ section_order <- c(
   "Awake signal components",
   "Neurologic injury",
   "Outcome",
+  "Discharge outcomes",
   "Unclassified audit"
 )
 

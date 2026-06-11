@@ -372,6 +372,17 @@ run_case_crossover_dlnm <- function(
     effect_prefix = "rr",
     extra_cols = list(analysis_period = ANALYSIS_PERIOD_LABEL)
   )
+  contrast_summary <- make_dlnm_contrast_summary(
+    pred = pred,
+    grid = grid,
+    source_x = df$tmax_mean_c_lag0,
+    label = label,
+    model = model,
+    reference = reference,
+    center = center,
+    effect_prefix = "rr",
+    extra_cols = list(analysis_period = ANALYSIS_PERIOD_LABEL)
+  )
 
   if (return_curve) {
     return(list(
@@ -381,7 +392,8 @@ run_case_crossover_dlnm <- function(
       reduced_vcov = reduced_vcov,
       lag_summary = lag_summary,
       lag_specific = lag_specific,
-      lag_temperature_surface = lag_temperature_surface
+      lag_temperature_surface = lag_temperature_surface,
+      contrast_summary = contrast_summary
     ))
   }
 
@@ -452,6 +464,7 @@ reduced_vcov_rows <- list()
 lag_summary_rows <- list()
 lag_specific_rows <- list()
 lag_temperature_surface_rows <- list()
+contrast_summary_rows <- list()
 
 run_and_store <- function(key, df, label, model, reference, adjust_pollution = FALSE, allow_skip = FALSE, min_ohca = 0L, min_event_days = 0L) {
   fit <- run_case_crossover_dlnm(
@@ -472,6 +485,7 @@ run_and_store <- function(key, df, label, model, reference, adjust_pollution = F
   if (!is.null(fit$lag_summary)) lag_summary_rows[[key]] <<- fit$lag_summary
   if (!is.null(fit$lag_specific)) lag_specific_rows[[key]] <<- fit$lag_specific
   if (!is.null(fit$lag_temperature_surface)) lag_temperature_surface_rows[[key]] <<- fit$lag_temperature_surface
+  if (!is.null(fit$contrast_summary)) contrast_summary_rows[[key]] <<- fit$contrast_summary
   invisible(fit)
 }
 
@@ -534,6 +548,7 @@ reduced_vcov_df <- bind_rows(reduced_vcov_rows)
 lag_summary_df <- bind_rows(lag_summary_rows)
 lag_specific_df <- bind_rows(lag_specific_rows)
 lag_temperature_surface_df <- bind_rows(lag_temperature_surface_rows)
+contrast_summary_df <- bind_rows(contrast_summary_rows)
 
 readr::write_csv(results_df, file.path(output_dir, "case_crossover_dlnm_results.csv"))
 readr::write_csv(curves_df, file.path(output_dir, "case_crossover_dlnm_curves.csv"))
@@ -542,6 +557,7 @@ readr::write_csv(reduced_vcov_df, file.path(output_dir, "case_crossover_dlnm_red
 readr::write_csv(lag_summary_df, file.path(output_dir, "case_crossover_dlnm_lag_summaries.csv"))
 readr::write_csv(lag_specific_df, file.path(output_dir, "case_crossover_dlnm_lag_specific_summaries.csv"))
 readr::write_csv(lag_temperature_surface_df, file.path(output_dir, "case_crossover_dlnm_lag_temperature_surface.csv"))
+readr::write_csv(contrast_summary_df, file.path(output_dir, "case_crossover_dlnm_contrast_summaries.csv"))
 invisible(write_dlnm_lag_temperature_surface_pdf(
   lag_temperature_surface_df,
   file.path(output_dir, "case_crossover_dlnm_lag_temperature_surface_plots.pdf"),

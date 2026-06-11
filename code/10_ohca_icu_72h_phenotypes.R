@@ -112,6 +112,22 @@ clean_binary_text <- function(x) {
   stringr::str_to_lower(stringr::str_squish(tidyr::replace_na(as.character(x), "")))
 }
 
+is_hospice_discharge <- function(x) {
+  stringr::str_detect(normalize_category(as.character(x)), "hospice|comfort")
+}
+
+is_home_discharge <- function(x) {
+  normalize_category(as.character(x)) == "home"
+}
+
+is_snf_discharge <- function(x) {
+  stringr::str_detect(normalize_category(as.character(x)), "skilled nursing|\\bsnf\\b")
+}
+
+is_ltach_discharge <- function(x) {
+  stringr::str_detect(normalize_category(as.character(x)), "long term care hospital|ltach")
+}
+
 safe_chr <- function(x) {
   x <- as.character(x)
   x[is.na(x) | !nzchar(stringr::str_squish(x))] <- "Missing"
@@ -1435,10 +1451,21 @@ neuro_dx <- diagnosis |>
 respiratory <- read_clif_table(tables_path, file_type, "respiratory_support", required = FALSE)
 if (is.null(respiratory) || nrow(respiratory) == 0) {
   resp_summary <- tibble::tibble(hospitalization_id = cohort_ids)
+  trach_summary <- tibble::tibble(hospitalization_id = cohort_ids, any_trach = FALSE)
 } else if (!all(c("hospitalization_id", "recorded_dttm") %in% names(respiratory))) {
   resp_summary <- tibble::tibble(hospitalization_id = cohort_ids)
+  trach_summary <- tibble::tibble(hospitalization_id = cohort_ids, any_trach = FALSE)
 } else {
   respiratory <- ensure_columns(respiratory, c("device_category", "tracheostomy"))
+  trach_summary <- respiratory |>
+    transmute(
+      hospitalization_id = as.character(.data$hospitalization_id),
+      tracheostomy = stringr::str_to_upper(tidyr::replace_na(as.character(.data$tracheostomy), ""))
+    ) |>
+    filter(.data$hospitalization_id %in% cohort_ids) |>
+    mutate(trach = .data$tracheostomy %in% c("1", "TRUE", "YES")) |>
+    group_by(.data$hospitalization_id) |>
+    summarise(any_trach = any(.data$trach, na.rm = TRUE), .groups = "drop")
   resp_summary <- respiratory |>
     transmute(
       hospitalization_id = as.character(.data$hospitalization_id),
@@ -1614,6 +1641,7 @@ phenotype_cohort <- cohort |>
   left_join(ohca_mechanism, by = "hospitalization_id") |>
   left_join(neuro_dx, by = "hospitalization_id") |>
   left_join(resp_summary, by = "hospitalization_id") |>
+  left_join(trach_summary, by = "hospitalization_id") |>
   left_join(neuro_summary, by = "hospitalization_id") |>
   left_join(vaso_summary, by = "hospitalization_id") |>
   left_join(sofa_wide, by = "hospitalization_id") |>
@@ -1621,6 +1649,7 @@ phenotype_cohort <- cohort |>
     ohca_mechanism = tidyr::replace_na(.data$ohca_mechanism, "unclear_other"),
     anoxic_brain_injury_dx = yesno(.data$anoxic_brain_injury_dx),
     brain_death_dx = yesno(.data$brain_death_dx),
+    any_trach = yesno(.data$any_trach),
     any_imv_0_72h = yesno(.data$any_imv_0_72h),
     any_imv_48_72h = yesno(.data$any_imv_48_72h),
     any_non_imv_after_imv = yesno(.data$any_non_imv_after_imv),
@@ -1658,6 +1687,12 @@ phenotype_cohort <- cohort |>
       .data$any_non_imv_after_imv |
         (!.data$any_imv_48_72h & !.data$last_resp_imv_0_72h)
     ),
+    imv12_cohort = !is.na(.data$imv_duration_hours) & .data$imv_duration_hours >= 12,
+    hospice_discharge = is_hospice_discharge(.data$discharge_category) | is_hospice_discharge(.data$discharge_category_clean),
+    discharge_death_hospice = .data$hospital_death == 1L | .data$death_or_hospice == 1L | .data$hospice_discharge,
+    discharge_ltach_trach = is_ltach_discharge(.data$discharge_category) & .data$any_trach,
+    discharge_alive_home = !.data$discharge_death_hospice & is_home_discharge(.data$discharge_category),
+    discharge_alive_snf = !.data$discharge_death_hospice & is_snf_discharge(.data$discharge_category),
     phenotype = dplyr::case_when(
       .data$death_within_72h ~ "anoxic_brain_injury",
       !.data$any_imv_0_72h ~ "alive_no_imv",
@@ -1952,7 +1987,12 @@ table1 <- bind_rows(
   add_table1_binary(phenotype_analysis_cohort, "72h phenotype evidence", "Awake signal", "awake_signal"),
   add_table1_binary(phenotype_analysis_cohort, "72h phenotype evidence", "Impaired neurologic signal", "impaired_neuro_signal"),
   add_table1_binary(phenotype_analysis_cohort, "Outcome", "Hospital death", "hospital_death"),
-  add_table1_binary(phenotype_analysis_cohort, "Outcome", "Death within 72h", "death_within_72h")
+  add_table1_binary(phenotype_analysis_cohort, "Outcome", "Death within 72h", "death_within_72h"),
+  add_table1_binary(phenotype_analysis_cohort, "Discharge outcomes", "Discharge death/hospice", "discharge_death_hospice"),
+  add_table1_binary(phenotype_analysis_cohort, "Discharge outcomes", "LTACH discharge with tracheostomy", "discharge_ltach_trach"),
+  add_table1_binary(phenotype_analysis_cohort, "Discharge outcomes", "Any tracheostomy evidence", "any_trach"),
+  add_table1_binary(phenotype_analysis_cohort, "Discharge outcomes", "Alive discharge SNF", "discharge_alive_snf"),
+  add_table1_binary(phenotype_analysis_cohort, "Discharge outcomes", "Alive discharge home", "discharge_alive_home")
 ) |>
   mutate(site_name = site_name, .before = 1)
 
@@ -1984,6 +2024,11 @@ table2 <- bind_rows(
   gcs_landmark_table_rows,
   add_table2_binary(phenotype_table_cohort, "Outcome", "In-hospital mortality", "hospital_death", table2_phenotype_levels),
   add_table2_binary(phenotype_table_cohort, "Outcome", "Death within 72h", "death_within_72h", table2_phenotype_levels),
+  add_table2_binary(phenotype_table_cohort, "Discharge outcomes", "Discharge death/hospice", "discharge_death_hospice", table2_phenotype_levels),
+  add_table2_binary(phenotype_table_cohort, "Discharge outcomes", "LTACH discharge with tracheostomy", "discharge_ltach_trach", table2_phenotype_levels),
+  add_table2_binary(phenotype_table_cohort, "Discharge outcomes", "Any tracheostomy evidence", "any_trach", table2_phenotype_levels),
+  add_table2_binary(phenotype_table_cohort, "Discharge outcomes", "Alive discharge SNF", "discharge_alive_snf", table2_phenotype_levels),
+  add_table2_binary(phenotype_table_cohort, "Discharge outcomes", "Alive discharge home", "discharge_alive_home", table2_phenotype_levels),
   add_table2_categorical(phenotype_table_cohort |> filter(.data$phenotype == "unclassified"), "Unclassified audit", "Reason unclassified", "unclassified_reason", table2_phenotype_levels)
 ) |>
   mutate(site_name = site_name, .before = 1)
@@ -1998,6 +2043,8 @@ readr::write_csv(
     "any_avpu_alert_0_72h", "sat_pass_0_72h", "sbt_pass_0_72h",
     "impaired_neuro_signal", "extubated_by_72h", "any_imv_0_72h", "any_imv_48_72h",
     "vaso_any_0_72h", "sofa_total_24h", "sofa_total_48h", "sofa_total_72h",
+    "imv12_cohort", "discharge_death_hospice", "discharge_ltach_trach", "any_trach",
+    "discharge_alive_snf", "discharge_alive_home",
     "min_gcs_0_72h", "best_gcs_24_72h", "last_gcs_24_72h", "best_rass_24_72h",
     "last_rass_24_72h", "hospital_death", "death_within_72h"
   ),
