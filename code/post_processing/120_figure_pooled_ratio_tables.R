@@ -29,7 +29,9 @@ clean_label <- function(x) {
 
 clean_outcome <- function(x) {
   dplyr::case_when(
-    x == "limited_brain_function" ~ "Limited brain function",
+    x == "alive_no_imv" ~ "No IMV in first 72h",
+    x == "regained_consciousness_extubated" ~ "Extubated by 72h",
+    x == "limited_brain_function" ~ "On IMV at 72h",
     x == "anoxic_brain_injury" ~ "Death within 72h",
     TRUE ~ clean_label(x)
   )

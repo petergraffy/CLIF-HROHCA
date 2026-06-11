@@ -698,7 +698,7 @@ run_linear <- function(df, outcome, exposure, label, adjust_terms = character())
 }
 
 run_multinomial <- function(df, exposure, label, adjust_terms = character()) {
-  model_levels <- c("regained_consciousness_extubated", "limited_brain_function", "anoxic_brain_injury")
+  model_levels <- c("regained_consciousness_extubated", "alive_no_imv", "limited_brain_function", "anoxic_brain_injury")
   reference_level <- "regained_consciousness_extubated"
   if (!requireNamespace("nnet", quietly = TRUE)) {
     return(tibble::tibble(
@@ -720,7 +720,7 @@ run_multinomial <- function(df, exposure, label, adjust_terms = character()) {
   base <- df |>
     filter(.data$phenotype %in% model_levels, !is.na(.data[[exposure]])) |>
     mutate(phenotype = stats::relevel(factor(.data$phenotype, levels = model_levels), ref = reference_level))
-  if (nrow(base) < 50 || length(unique(base$phenotype)) < 3 || any(table(base$phenotype) < 5) || length(unique(base[[exposure]])) < 2) {
+  if (nrow(base) < 50 || length(unique(base$phenotype)) < length(model_levels) || any(table(base$phenotype) < 5) || length(unique(base[[exposure]])) < 2) {
     return(tibble::tibble(
       model = label,
       exposure = exposure,
@@ -1011,8 +1011,8 @@ run_spline_logistic <- function(df, outcome, label, adjust_terms = character(), 
   }
 
   temp_grid <- seq(
-    stats::quantile(base$tmax_mean_c, 0.01, na.rm = TRUE, names = FALSE),
-    stats::quantile(base$tmax_mean_c, 0.99, na.rm = TRUE, names = FALSE),
+    min(base$tmax_mean_c, na.rm = TRUE),
+    max(base$tmax_mean_c, na.rm = TRUE),
     length.out = 100
   )
   ref_temp <- stats::median(base$tmax_mean_c, na.rm = TRUE)
@@ -1063,7 +1063,7 @@ run_phenotype_assignment_model <- function(
   humidity_var = "rmax_mean_pct",
   exposure_window = "lag0"
 ) {
-  keep_levels <- c("regained_consciousness_extubated", "limited_brain_function", "anoxic_brain_injury")
+  keep_levels <- c("regained_consciousness_extubated", "alive_no_imv", "limited_brain_function", "anoxic_brain_injury")
   reference_level <- "regained_consciousness_extubated"
   if (!all(c(temp_var, humidity_var) %in% names(df))) {
     empty_base <- df[0, , drop = FALSE]
@@ -1140,7 +1140,7 @@ run_phenotype_assignment_model <- function(
   }
   if (
     nrow(base) < 50 ||
-      length(unique(base$phenotype)) < 3 ||
+      length(unique(base$phenotype)) < length(keep_levels) ||
       any(table(base$phenotype) < 5) ||
       length(unique(base$tmax_mean_c)) < 5 ||
       length(unique(base$rmax_mean_pct)) < 5
@@ -1187,8 +1187,8 @@ run_phenotype_assignment_model <- function(
   }
 
   temp_grid <- seq(
-    stats::quantile(base$tmax_mean_c, 0.01, na.rm = TRUE, names = FALSE),
-    stats::quantile(base$tmax_mean_c, 0.99, na.rm = TRUE, names = FALSE),
+    min(base$tmax_mean_c, na.rm = TRUE),
+    max(base$tmax_mean_c, na.rm = TRUE),
     length.out = 100
   )
   ref_temp <- stats::median(base$tmax_mean_c, na.rm = TRUE)
@@ -1902,10 +1902,10 @@ consort_counts <- tibble::tibble(
     "OHCA ICU admissions with allowed ED/procedure/direct ICU pathway and ICU entry <24h",
     "OHCA ICU admissions with admission-day county Tmax and humidity",
     "Classified into one of four primary 72h phenotypes",
-    "Alive at 72h with no IMV in first 72h",
-    "Regained consciousness and extubated",
-    "Limited brain function",
-    "Anoxic/severe group: death within 72h"
+    "No IMV in first 72h",
+    "Extubated by 72h",
+    "On IMV at 72h",
+    "Death within 72h"
   ),
   n = c(
     summary_value("n_all_icu_admissions"),
@@ -2084,16 +2084,16 @@ if (nrow(phenotype_assignment_curve) > 0 && isTRUE(phenotype_assignment_model$es
       phenotype = factor(
         .data$phenotype,
         levels = c("alive_no_imv", "regained_consciousness_extubated", "limited_brain_function", "anoxic_brain_injury"),
-        labels = c("Alive/no IMV", "Regained/extubated", "Limited brain function", "Death within 72h")
+        labels = c("No IMV in first 72h", "Extubated by 72h", "On IMV at 72h", "Death within 72h")
       )
     )
 
   p_curve <- ggplot(curve_plot, aes(x = .data$tmax_mean_c, y = .data$predicted_probability, color = .data$phenotype)) +
     geom_line(linewidth = 1) +
     scale_color_manual(values = c(
-      "Alive/no IMV" = "#457B9D",
-      "Regained/extubated" = "#2A9D8F",
-      "Limited brain function" = "#E9C46A",
+      "No IMV in first 72h" = "#457B9D",
+      "Extubated by 72h" = "#2A9D8F",
+      "On IMV at 72h" = "#E9C46A",
       "Death within 72h" = "#C44536"
     )) +
     scale_y_continuous(labels = scales::label_percent(accuracy = 1)) +

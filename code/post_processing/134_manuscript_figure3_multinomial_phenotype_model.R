@@ -26,16 +26,19 @@ phenotype_summary <- read_required(summary_path)
 
 target_model <- "phenotype_assignment_temperature_humidity_demographics"
 phenotype_order <- c(
+  "alive_no_imv",
   "regained_consciousness_extubated",
   "limited_brain_function",
   "anoxic_brain_injury"
 )
 phenotype_labels <- c(
-  regained_consciousness_extubated = "Awake/extubated",
-  limited_brain_function = "Limited brain function",
+  alive_no_imv = "No IMV in first 72h",
+  regained_consciousness_extubated = "Extubated by 72h",
+  limited_brain_function = "On IMV at 72h",
   anoxic_brain_injury = "Death within 72h"
 )
 phenotype_colors <- c(
+  alive_no_imv = "#457B9D",
   regained_consciousness_extubated = "#0f6b78",
   limited_brain_function = "#8f7a2f",
   anoxic_brain_injury = "#9b2f37"
@@ -88,6 +91,8 @@ source_table <- pooled_plot |>
 readr::write_csv(source_table, file.path(figure_dir, "figure3_multinomial_phenotype_model_source.csv"))
 
 x_limits <- range(pooled_plot$tmax_mean_c, na.rm = TRUE)
+fahrenheit_breaks <- seq(45, 90, by = 15)
+x_breaks_c <- (fahrenheit_breaks - 32) * 5 / 9
 y_limits <- range(
   c(site_plot$predicted_probability, pooled_plot$predicted_probability),
   na.rm = TRUE
@@ -148,7 +153,8 @@ figure3 <- ggplot2::ggplot() +
   ggplot2::scale_color_manual(values = phenotype_colors, guide = "none") +
   ggplot2::scale_fill_manual(values = phenotype_colors, guide = "none") +
   ggplot2::scale_x_continuous(
-    breaks = seq(floor(x_limits[[1]] / 5) * 5, ceiling(x_limits[[2]] / 5) * 5, by = 5),
+    breaks = x_breaks_c,
+    labels = fahrenheit_breaks,
     limits = x_limits,
     expand = ggplot2::expansion(mult = c(0.01, 0.01))
   ) +
@@ -160,7 +166,7 @@ figure3 <- ggplot2::ggplot() +
   ) +
   ggplot2::labs(
     title = "Admission temperature and 72-hour OHCA ICU phenotype assignment",
-    x = "Admission-day maximum temperature (C)",
+    x = "Admission-day maximum temperature (°F)",
     y = "Predicted probability"
   ) +
   ggplot2::theme_classic(base_size = 11.5) +

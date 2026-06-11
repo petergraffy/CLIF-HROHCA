@@ -22,6 +22,12 @@ read_bind <- function(pattern) {
 interpolate_site_curves <- function(curves, weights, curve_label) {
   if (nrow(curves) == 0) return(list(site = data.frame(), pooled = data.frame()))
 
+  weighted_mean_available <- function(x, w) {
+    keep <- is.finite(x) & is.finite(w)
+    if (!any(keep)) return(NA_real_)
+    stats::weighted.mean(x[keep], w = w[keep], na.rm = TRUE)
+  }
+
   site_ranges <- curves |>
     dplyr::group_by(.data$site_name, .data$model) |>
     dplyr::summarise(
@@ -32,8 +38,8 @@ interpolate_site_curves <- function(curves, weights, curve_label) {
 
   interpolated <- lapply(split(curves, curves$model), function(model_df) {
     ranges <- site_ranges[site_ranges$model == unique(model_df$model), ]
-    grid_min <- max(ranges$min_temp_c, na.rm = TRUE)
-    grid_max <- min(ranges$max_temp_c, na.rm = TRUE)
+    grid_min <- min(ranges$min_temp_c, na.rm = TRUE)
+    grid_max <- max(ranges$max_temp_c, na.rm = TRUE)
     if (!is.finite(grid_min) || !is.finite(grid_max) || grid_min >= grid_max) return(data.frame())
 
     temp_grid <- seq(grid_min, grid_max, length.out = 100)
@@ -41,35 +47,40 @@ interpolate_site_curves <- function(curves, weights, curve_label) {
       site_df <- site_df[order(site_df$tmax_mean_c), ]
       unique_df <- site_df[!duplicated(site_df$tmax_mean_c), ]
       if (nrow(unique_df) < 2) return(data.frame())
+      in_site_support <- temp_grid >= min(unique_df$tmax_mean_c, na.rm = TRUE) &
+        temp_grid <= max(unique_df$tmax_mean_c, na.rm = TRUE)
       out <- data.frame(
         site_name = unique(site_df$site_name),
         model = unique(site_df$model),
         curve_type = curve_label,
         phenotype = unique(site_df$phenotype),
-        tmax_mean_c = temp_grid,
-        predicted_probability = stats::approx(
+        tmax_mean_c = temp_grid
+      )
+      out$predicted_probability <- NA_real_
+      out$predicted_probability[in_site_support] <- stats::approx(
           x = unique_df$tmax_mean_c,
           y = unique_df$predicted_probability,
-          xout = temp_grid,
+        xout = temp_grid[in_site_support],
           rule = 1
-        )$y
-      )
+      )$y
       if (all(c("predicted_probability_low", "predicted_probability_high") %in% names(unique_df))) {
         if (sum(is.finite(unique_df$predicted_probability_low)) >= 2L) {
-          out$predicted_probability_low <- stats::approx(
+          out$predicted_probability_low <- NA_real_
+          out$predicted_probability_low[in_site_support] <- stats::approx(
             x = unique_df$tmax_mean_c,
             y = unique_df$predicted_probability_low,
-            xout = temp_grid,
+            xout = temp_grid[in_site_support],
             rule = 1
           )$y
         } else {
           out$predicted_probability_low <- NA_real_
         }
         if (sum(is.finite(unique_df$predicted_probability_high)) >= 2L) {
-          out$predicted_probability_high <- stats::approx(
+          out$predicted_probability_high <- NA_real_
+          out$predicted_probability_high[in_site_support] <- stats::approx(
             x = unique_df$tmax_mean_c,
             y = unique_df$predicted_probability_high,
-            xout = temp_grid,
+            xout = temp_grid[in_site_support],
             rule = 1
           )$y
         } else {
@@ -103,24 +114,26 @@ interpolate_site_curves <- function(curves, weights, curve_label) {
   pooled <- site_interpolated |>
     dplyr::group_by(.data$model, .data$curve_type, .data$phenotype, .data$tmax_mean_c) |>
     dplyr::summarise(
-      predicted_probability = stats::weighted.mean(.data$predicted_probability, w = .data$weight_n, na.rm = TRUE),
-      predicted_probability_low = if (has_ci) stats::weighted.mean(.data$predicted_probability_low, w = .data$weight_n, na.rm = TRUE) else NA_real_,
-      predicted_probability_high = if (has_ci) stats::weighted.mean(.data$predicted_probability_high, w = .data$weight_n, na.rm = TRUE) else NA_real_,
-      k_sites = dplyr::n_distinct(.data$site_name),
+      predicted_probability = weighted_mean_available(.data$predicted_probability, .data$weight_n),
+      predicted_probability_low = if (has_ci) weighted_mean_available(.data$predicted_probability_low, .data$weight_n) else NA_real_,
+      predicted_probability_high = if (has_ci) weighted_mean_available(.data$predicted_probability_high, .data$weight_n) else NA_real_,
+      k_sites = dplyr::n_distinct(.data$site_name[is.finite(.data$predicted_probability)]),
       pooled_n = sum(.data$weight_n[!is.na(.data$predicted_probability)], na.rm = TRUE),
       probability_ci_method = if (has_ci_method) paste(sort(unique(stats::na.omit(.data$probability_ci_method))), collapse = "; ") else NA_character_,
       probability_ci_simulations = if (has_ci_sims) min(.data$probability_ci_simulations, na.rm = TRUE) else NA_integer_,
       .groups = "drop"
-    )
+    ) |>
+    dplyr::filter(is.finite(.data$predicted_probability))
 
   list(site = site_interpolated, pooled = pooled)
 }
 
 plot_multinomial_curve <- function(site_curves, pooled_curves, title, output_file) {
-  phenotype_order <- c("regained_consciousness_extubated", "limited_brain_function", "anoxic_brain_injury")
+  phenotype_order <- c("alive_no_imv", "regained_consciousness_extubated", "limited_brain_function", "anoxic_brain_injury")
   phenotype_labels <- c(
-    regained_consciousness_extubated = "Awake/extubated",
-    limited_brain_function = "Limited brain function",
+    alive_no_imv = "No IMV in first 72h",
+    regained_consciousness_extubated = "Extubated by 72h",
+    limited_brain_function = "On IMV at 72h",
     anoxic_brain_injury = "Death within 72h"
   )
 
@@ -153,7 +166,7 @@ plot_multinomial_curve <- function(site_curves, pooled_curves, title, output_fil
     ggplot2::scale_y_continuous(labels = function(x) paste0(round(100 * x), "%"), limits = c(0, NA)) +
     ggplot2::labs(
       title = title,
-      subtitle = "Light grey lines are site-specific curves; teal line is the n-weighted pooled curve over common temperature support.",
+      subtitle = "Light grey lines are site-specific curves; teal line is the n-weighted pooled curve over available site support.",
       x = "Admission daily maximum temperature (C)",
       y = "Predicted probability"
     ) +
