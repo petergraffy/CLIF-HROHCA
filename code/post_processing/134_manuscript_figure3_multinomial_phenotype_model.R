@@ -90,8 +90,15 @@ source_table <- pooled_plot |>
   )
 readr::write_csv(source_table, file.path(figure_dir, "figure3_multinomial_phenotype_model_source.csv"))
 
-x_limits <- range(pooled_plot$tmax_mean_c, na.rm = TRUE)
-fahrenheit_breaks <- seq(45, 90, by = 15)
+EDGE_TRIM_F <- 2
+edge_trim_c <- EDGE_TRIM_F * 5 / 9
+data_limits <- range(pooled_plot$tmax_mean_c, na.rm = TRUE) + c(edge_trim_c, -edge_trim_c)
+x_limits <- c((0 - 32) * 5 / 9, data_limits[[2]])
+site_plot <- site_plot |>
+  dplyr::filter(.data$tmax_mean_c >= data_limits[[1]], .data$tmax_mean_c <= data_limits[[2]])
+pooled_plot <- pooled_plot |>
+  dplyr::filter(.data$tmax_mean_c >= data_limits[[1]], .data$tmax_mean_c <= data_limits[[2]])
+fahrenheit_breaks <- seq(0, 90, by = 15)
 x_breaks_c <- (fahrenheit_breaks - 32) * 5 / 9
 y_limits <- range(
   c(site_plot$predicted_probability, pooled_plot$predicted_probability),
@@ -148,7 +155,8 @@ figure3 <- ggplot2::ggplot() +
   ggplot2::facet_wrap(
     ggplot2::vars(.data$phenotype),
     nrow = 1,
-    labeller = ggplot2::as_labeller(facet_labels)
+    labeller = ggplot2::as_labeller(facet_labels),
+    axes = "all_x"
   ) +
   ggplot2::scale_color_manual(values = phenotype_colors, guide = "none") +
   ggplot2::scale_fill_manual(values = phenotype_colors, guide = "none") +
@@ -190,7 +198,8 @@ figure3_stacked <- figure3 +
   ggplot2::facet_wrap(
     ggplot2::vars(.data$phenotype),
     ncol = 1,
-    labeller = ggplot2::as_labeller(facet_labels)
+    labeller = ggplot2::as_labeller(facet_labels),
+    axes = "all_x"
   ) +
   ggplot2::theme(
     panel.spacing.y = grid::unit(1.1, "lines"),

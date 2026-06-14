@@ -749,6 +749,11 @@ add_exposure_splines <- function(df, temp_var, humidity_var, prefix = "") {
 }
 
 analysis <- add_exposure_splines(analysis, "tmax_mean_c", "rmax_mean_pct")
+analysis <- analysis |>
+  mutate(
+    tmax_per1c = .data$tmax_mean_c,
+    rmax_per1pct = .data$rmax_mean_pct
+  )
 
 fine_gray_results <- list(
   run_fine_gray(
@@ -766,6 +771,22 @@ fine_gray_results <- list(
     "Natural spline Tmax and humidity, df=3",
     "^tmax_spline_|^rmax_spline_",
     mechanism_adjust
+  ),
+  run_fine_gray(
+    analysis,
+    c("tmax_per1c", "rmax_per1pct"),
+    "awake_extubated_72h_vs_death_72h_temperature_humidity_demographics_linear",
+    "Linear Tmax per 1C and humidity per 1 percentage point",
+    "^tmax_per1c$|^rmax_per1pct$",
+    base_adjust
+  ),
+  run_fine_gray(
+    analysis,
+    c("tmax_per1c", "rmax_per1pct"),
+    "awake_extubated_72h_vs_death_72h_temperature_humidity_demographics_mechanism_linear",
+    "Linear Tmax per 1C and humidity per 1 percentage point",
+    "^tmax_per1c$|^rmax_per1pct$",
+    mechanism_adjust
   )
 )
 
@@ -782,6 +803,8 @@ fine_gray_lag_results <- purrr::map(seq_len(nrow(lag_window_specs)), function(i)
     filter(!is.na(.data[[spec$temp_var]]), is.finite(.data[[spec$temp_var]]), !is.na(.data[[spec$humidity_var]]), is.finite(.data[[spec$humidity_var]]))
   if (nrow(lag_df) > 0) {
     lag_df <- add_exposure_splines(lag_df, spec$temp_var, spec$humidity_var, prefix = spec$exposure_window)
+    lag_df[[paste0(spec$exposure_window, "_tmax_per1c")]] <- lag_df[[spec$temp_var]]
+    lag_df[[paste0(spec$exposure_window, "_rmax_per1pct")]] <- lag_df[[spec$humidity_var]]
   }
   exposure_terms <- paste0(spec$exposure_window, "_", c(
     "tmax_spline_1", "tmax_spline_2", "tmax_spline_3",
@@ -804,7 +827,30 @@ fine_gray_lag_results <- purrr::map(seq_len(nrow(lag_window_specs)), function(i)
     exposure_regex,
     mechanism_adjust
   )
-  list(primary = primary, mechanism = mechanism)
+  linear_exposure_terms <- paste0(spec$exposure_window, "_", c("tmax_per1c", "rmax_per1pct"))
+  linear_exposure_regex <- paste0("^", spec$exposure_window, "_tmax_per1c$|^", spec$exposure_window, "_rmax_per1pct$")
+  linear_primary <- run_fine_gray(
+    lag_df,
+    linear_exposure_terms,
+    paste0("awake_extubated_72h_vs_death_72h_temperature_humidity_demographics_linear_", spec$exposure_window),
+    paste0("Linear mean Tmax per 1C and humidity per 1 percentage point ", spec$exposure_window),
+    linear_exposure_regex,
+    base_adjust
+  )
+  linear_mechanism <- run_fine_gray(
+    lag_df,
+    linear_exposure_terms,
+    paste0("awake_extubated_72h_vs_death_72h_temperature_humidity_demographics_mechanism_linear_", spec$exposure_window),
+    paste0("Linear mean Tmax per 1C and humidity per 1 percentage point ", spec$exposure_window),
+    linear_exposure_regex,
+    mechanism_adjust
+  )
+  list(
+    primary = primary,
+    mechanism = mechanism,
+    linear_primary = linear_primary,
+    linear_mechanism = linear_mechanism
+  )
 })
 
 models <- purrr::map_dfr(fine_gray_results, "summary") |>
@@ -815,15 +861,15 @@ model_vcov <- purrr::map_dfr(fine_gray_results, "vcov") |>
   mutate(site_name = site_name, .before = 1)
 
 fine_gray_lag_models <- purrr::map_dfr(fine_gray_lag_results, function(x) {
-  bind_rows(x$primary$summary, x$mechanism$summary)
+  bind_rows(x$primary$summary, x$mechanism$summary, x$linear_primary$summary, x$linear_mechanism$summary)
 }) |>
   mutate(site_name = site_name, .before = 1)
 fine_gray_lag_coefficients <- purrr::map_dfr(fine_gray_lag_results, function(x) {
-  bind_rows(x$primary$coefficients, x$mechanism$coefficients)
+  bind_rows(x$primary$coefficients, x$mechanism$coefficients, x$linear_primary$coefficients, x$linear_mechanism$coefficients)
 }) |>
   mutate(site_name = site_name, .before = 1)
 fine_gray_lag_vcov <- purrr::map_dfr(fine_gray_lag_results, function(x) {
-  bind_rows(x$primary$vcov, x$mechanism$vcov)
+  bind_rows(x$primary$vcov, x$mechanism$vcov, x$linear_primary$vcov, x$linear_mechanism$vcov)
 }) |>
   mutate(site_name = site_name, .before = 1)
 

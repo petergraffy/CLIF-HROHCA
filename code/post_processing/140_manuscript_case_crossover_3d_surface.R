@@ -41,7 +41,9 @@ if (nrow(plot_dat) == 0L) {
 }
 
 plot_dat$tmax_f <- plot_dat$tmax_mean_c * 9 / 5 + 32
-plot_dat <- plot_dat[plot_dat$tmax_mean_c >= -20 & plot_dat$tmax_mean_c <= 38, , drop = FALSE]
+EDGE_TRIM_F <- 2
+edge_trim_c <- EDGE_TRIM_F * 5 / 9
+plot_dat <- plot_dat[plot_dat$tmax_mean_c >= -20 + edge_trim_c & plot_dat$tmax_mean_c <= 38 - edge_trim_c, , drop = FALSE]
 plot_dat <- plot_dat[order(plot_dat$lag, plot_dat$tmax_mean_c), , drop = FALSE]
 
 temps_f <- sort(unique(plot_dat$tmax_f))

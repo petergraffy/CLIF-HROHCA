@@ -26,6 +26,8 @@ format_ratio <- function(ratio, low, high) {
 term_family <- function(term) {
   dplyr::case_when(
     term == "(Intercept)" ~ "intercept",
+    grepl("tmax_per1c|tmax_per5c", term, ignore.case = TRUE) ~ "temperature_linear",
+    grepl("rmax_per1pct", term, ignore.case = TRUE) ~ "humidity_linear",
     grepl("tmax|temperature", term, ignore.case = TRUE) ~ "temperature_spline_basis",
     grepl("rmax|humidity", term, ignore.case = TRUE) ~ "humidity_spline_basis",
     TRUE ~ "covariate"
@@ -198,7 +200,15 @@ make_fine_gray_ratios <- function(df) {
       interpretation_note = dplyr::if_else(
         term_family(.data$coefficient) %in% c("temperature_spline_basis", "humidity_spline_basis"),
         "Spline-basis coefficient SHR; use CIF plots and model terms together for interpretation.",
-        "Random-effects pooled Fine-Gray subdistribution hazard ratio."
+        dplyr::if_else(
+          term_family(.data$coefficient) == "temperature_linear",
+          "Random-effects pooled Fine-Gray subdistribution hazard ratio per 1C warmer Tmax.",
+          dplyr::if_else(
+            term_family(.data$coefficient) == "humidity_linear",
+            "Random-effects pooled Fine-Gray subdistribution hazard ratio per 1 percentage point higher relative humidity.",
+            "Random-effects pooled Fine-Gray subdistribution hazard ratio."
+          )
+        )
       )
     )
 }

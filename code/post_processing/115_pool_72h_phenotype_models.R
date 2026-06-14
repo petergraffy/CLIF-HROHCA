@@ -372,6 +372,64 @@ if (nrow(imv12_discharge_table) > 0) write.csv(imv12_discharge_table, file.path(
 imv12_discharge_model <- read_bind("^[^_]+_ohca_icu_imv12_discharge_outcome_model[.]csv$")
 if (nrow(imv12_discharge_model) > 0) write.csv(imv12_discharge_model, file.path(output_dir, "all_site_ohca_icu_imv12_discharge_outcome_model.csv"), row.names = FALSE)
 
+imv12_discharge_curve <- read_bind("^[^_]+_ohca_icu_imv12_discharge_outcome_temperature_curve[.]csv$")
+if (nrow(imv12_discharge_curve) > 0) {
+  write.csv(imv12_discharge_curve, file.path(output_dir, "all_site_ohca_icu_imv12_discharge_outcome_temperature_curve.csv"), row.names = FALSE)
+  curve_min <- max(stats::aggregate(tmax_mean_c ~ site_name, data = imv12_discharge_curve, FUN = min)$tmax_mean_c, na.rm = TRUE)
+  curve_max <- min(stats::aggregate(tmax_mean_c ~ site_name, data = imv12_discharge_curve, FUN = max)$tmax_mean_c, na.rm = TRUE)
+  if (is.finite(curve_min) && is.finite(curve_max) && curve_min < curve_max) {
+    common_grid <- seq(curve_min, curve_max, length.out = 100)
+    site_outcome <- unique(imv12_discharge_curve[, c("site_name", "discharge_outcome"), drop = FALSE])
+    interpolated <- lapply(seq_len(nrow(site_outcome)), function(i) {
+      site <- site_outcome$site_name[i]
+      outcome <- site_outcome$discharge_outcome[i]
+      dat <- imv12_discharge_curve[
+        imv12_discharge_curve$site_name == site & imv12_discharge_curve$discharge_outcome == outcome,
+        ,
+        drop = FALSE
+      ]
+      dat <- dat[order(dat$tmax_mean_c), , drop = FALSE]
+      data.frame(
+        site_name = site,
+        model = dat$model[1],
+        reference_level = dat$reference_level[1],
+        n = dat$n[1],
+        tmax_mean_c = common_grid,
+        discharge_outcome = outcome,
+        predicted_probability = stats::approx(
+          dat$tmax_mean_c,
+          dat$predicted_probability,
+          xout = common_grid,
+          rule = 2
+        )$y,
+        stringsAsFactors = FALSE
+      )
+    })
+    interpolated <- do.call(rbind, interpolated)
+    pooled_curve <- stats::aggregate(
+      cbind(weighted_probability = predicted_probability * n, n) ~ model + reference_level + discharge_outcome + tmax_mean_c,
+      data = interpolated,
+      FUN = sum
+    )
+    pooled_curve$predicted_probability <- pooled_curve$weighted_probability / pooled_curve$n
+    k_sites <- stats::aggregate(
+      site_name ~ model + reference_level + discharge_outcome + tmax_mean_c,
+      data = interpolated,
+      FUN = function(x) length(unique(x))
+    )
+    names(k_sites)[names(k_sites) == "site_name"] <- "k_sites"
+    pooled_curve <- merge(
+      pooled_curve,
+      k_sites,
+      by = c("model", "reference_level", "discharge_outcome", "tmax_mean_c"),
+      all.x = TRUE,
+      sort = FALSE
+    )
+    pooled_curve <- pooled_curve[, c("model", "reference_level", "discharge_outcome", "tmax_mean_c", "predicted_probability", "n", "k_sites")]
+    write.csv(pooled_curve, file.path(output_dir, "pooled_ohca_icu_imv12_discharge_outcome_temperature_curve.csv"), row.names = FALSE)
+  }
+}
+
 imv12_discharge_coef <- read_bind("^[^_]+_ohca_icu_imv12_discharge_outcome_coefficients[.]csv$")
 if (nrow(imv12_discharge_coef) > 0) {
   write.csv(imv12_discharge_coef, file.path(output_dir, "all_site_ohca_icu_imv12_discharge_outcome_coefficients.csv"), row.names = FALSE)

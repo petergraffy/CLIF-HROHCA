@@ -45,9 +45,15 @@ if (nrow(site_curve) == 0 || nrow(pooled_curve) == 0) {
 
 max_sites <- max(pooled_curve$k_sites, na.rm = TRUE)
 y_breaks <- c(0.25, 0.5, 0.75, 1, 1.5, 2, 3, 4)
-x_limits_c <- c(-20, 38)
+EDGE_TRIM_F <- 2
+edge_trim_c <- EDGE_TRIM_F * 5 / 9
+x_limits_c <- c(-20 + edge_trim_c, 38 - edge_trim_c)
 fahrenheit_breaks <- seq(0, 100, by = 20)
 x_breaks_c <- (fahrenheit_breaks - 32) * 5 / 9
+site_curve <- site_curve |>
+  dplyr::filter(.data$tmax_mean_c >= x_limits_c[[1]], .data$tmax_mean_c <= x_limits_c[[2]])
+pooled_curve <- pooled_curve |>
+  dplyr::filter(.data$tmax_mean_c >= x_limits_c[[1]], .data$tmax_mean_c <= x_limits_c[[2]])
 
 figure1 <- ggplot2::ggplot() +
   ggplot2::geom_hline(yintercept = 1, color = "grey35", linewidth = 0.45, linetype = "dashed") +

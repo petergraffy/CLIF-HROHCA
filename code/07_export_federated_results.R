@@ -153,6 +153,7 @@ exports <- list(
   list(file.path(phenotype_dir, "ohca_icu_imv12_discharge_outcome_flow.csv"), "ohca_icu_imv12_discharge_outcome_flow"),
   list(file.path(phenotype_dir, "ohca_icu_imv12_discharge_outcome_table_by_outcome.csv"), "ohca_icu_imv12_discharge_outcome_table_by_outcome"),
   list(file.path(phenotype_dir, "ohca_icu_imv12_discharge_outcome_model.csv"), "ohca_icu_imv12_discharge_outcome_model"),
+  list(file.path(phenotype_dir, "ohca_icu_imv12_discharge_outcome_temperature_curve.csv"), "ohca_icu_imv12_discharge_outcome_temperature_curve"),
   list(file.path(phenotype_dir, "ohca_icu_imv12_discharge_outcome_coefficients.csv"), "ohca_icu_imv12_discharge_outcome_coefficients"),
   list(file.path(phenotype_dir, "ohca_icu_imv12_discharge_outcome_vcov.csv"), "ohca_icu_imv12_discharge_outcome_vcov")
 )
