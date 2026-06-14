@@ -24,11 +24,33 @@ pooled_dir <- file.path(repo_root, "output", "final", "federated_pooled")
 figure_dir <- file.path(repo_root, "output", "final", "manuscript_figures")
 dir.create(figure_dir, recursive = TRUE, showWarnings = FALSE)
 
-flow_path <- file.path(pooled_dir, "all_site_ohca_icu_72h_consort_flow.csv")
+box_project_dir <- path.expand("~/Library/CloudStorage/Box-Box/CLIF/Projects/CLIF-Heat-Related-OHCA")
+flow_candidates <- c(
+  file.path(pooled_dir, "all_site_ohca_icu_72h_consort_flow.csv"),
+  file.path(box_project_dir, "federated_pooled", "all_site_ohca_icu_72h_consort_flow.csv")
+)
 ed_death_path <- file.path(pooled_dir, "all_site_ohca_ed_only_death_never_icu_summary.csv")
-if (!file.exists(flow_path)) stop("Missing pooled CONSORT flow source: ", flow_path, call. = FALSE)
+imv12_flow_candidates <- c(
+  file.path(pooled_dir, "all_site_ohca_icu_imv12_discharge_outcome_flow.csv"),
+  file.path(box_project_dir, "federated_pooled", "all_site_ohca_icu_imv12_discharge_outcome_flow.csv")
+)
 
-flow_site <- read.csv(flow_path, stringsAsFactors = FALSE)
+read_multisite_flow <- function(candidates, source_name) {
+  existing <- candidates[file.exists(candidates)]
+  if (length(existing) == 0L) {
+    stop("Missing ", source_name, ". Expected one of: ", paste(candidates, collapse = ", "), call. = FALSE)
+  }
+
+  flows <- lapply(existing, function(path) {
+    dat <- read.csv(path, stringsAsFactors = FALSE)
+    dat$.source_path <- path
+    dat
+  })
+  site_counts <- vapply(flows, function(dat) length(unique(dat$site_name)), integer(1))
+  flows[[which.max(site_counts)]]
+}
+
+flow_site <- read_multisite_flow(flow_candidates, "pooled CONSORT flow source")
 flow <- aggregate(n ~ step_order + step, flow_site, sum)
 
 get_n <- function(step_order) {
@@ -71,6 +93,12 @@ n_excluded_pathway <- n_ohca_poa - n_pathway
 n_excluded_exposure <- n_pathway - n_exposure
 n_unclassified <- n_exposure - n_classified
 
+imv12_flow <- read_multisite_flow(imv12_flow_candidates, "IMV12 pooled flow source")
+n_imv12 <- sum(imv12_flow$n[imv12_flow$step == "IMV duration >=12 hours"], na.rm = TRUE)
+if (!is.finite(n_imv12) || n_imv12 <= 0) {
+  stop("Could not derive IMV12 cohort size from pooled IMV12 flow.", call. = FALSE)
+}
+
 ed_hosp <- NA_integer_
 ed_patients <- NA_integer_
 if (file.exists(ed_death_path)) {
@@ -80,8 +108,8 @@ if (file.exists(ed_death_path)) {
 }
 
 source_table <- data.frame(
-  display_order = seq_len(13),
-  section = c(rep("Main inclusion flow", 9), rep("72-hour phenotype assignment", 4)),
+  display_order = seq_len(14),
+  section = c(rep("Main inclusion flow", 9), rep("72-hour phenotype assignment", 4), "IMV12 cohort"),
   label = c(
     "Contributing sites",
     "All ICU admissions in CLIF, 2018-2024",
@@ -95,7 +123,8 @@ source_table <- data.frame(
     "No IMV in first 72h",
     "Extubated by 72h",
     "On IMV at 72h",
-    "Death within 72h"
+    "Death within 72h",
+    "IMV duration >=12 hours"
   ),
   n = c(
     n_sites,
@@ -110,7 +139,8 @@ source_table <- data.frame(
     n_alive_no_imv,
     n_awake_extubated,
     n_limited,
-    n_anoxic
+    n_anoxic,
+    n_imv12
   ),
   stringsAsFactors = FALSE
 )
@@ -118,7 +148,7 @@ if (is.finite(ed_hosp)) {
   source_table <- rbind(
     source_table,
     data.frame(
-      display_order = 14L,
+      display_order = 15L,
       section = "Separate ED-only audit",
       label = "OHCA diagnosis, ED only, died before ICU",
       n = ed_hosp,
@@ -128,7 +158,7 @@ if (is.finite(ed_hosp)) {
 }
 
 write.csv(source_table, file.path(figure_dir, "figure_consort_flow_source.csv"), row.names = FALSE)
-write.csv(flow_site, file.path(figure_dir, "figure_consort_flow_site_source.csv"), row.names = FALSE)
+write.csv(flow_site[names(flow_site) != ".source_path"], file.path(figure_dir, "figure_consort_flow_site_source.csv"), row.names = FALSE)
 
 node_line <- function(id, label, fill = "#F7FBFF", color = "#3D3D3D", style = "filled", width = 3.8, height = 0.7, fontsize = 18) {
   sprintf(
@@ -170,6 +200,7 @@ dot <- paste(
   node_line("awake", html_label("Extubated by 72h", paste0("n = ", fmt_n(n_awake_extubated))), fill = "#EEF7F2", width = 2.2, height = 0.75, fontsize = 14),
   node_line("limited", html_label("On IMV at 72h", paste0("n = ", fmt_n(n_limited))), fill = "#EEF7F2", width = 2.2, height = 0.75, fontsize = 14),
   node_line("anoxic", html_label("Death within 72h", paste0("n = ", fmt_n(n_anoxic))), fill = "#EEF7F2", width = 2.2, height = 0.75, fontsize = 14),
+  node_line("imv12", html_label("IMV duration >=12h", paste0("n = ", fmt_n(n_imv12))), fill = "#FFF4DE", width = 3.0, height = 0.75, fontsize = 15),
   "{rank = same; all; ex_no_ohca;}",
   "{rank = same; poa; ex_pathway;}",
   "{rank = same; eligible; ex_exposure;}",
@@ -187,6 +218,9 @@ dot <- paste(
   edge_line_ports("classified", "s", "awake", "n", weight = 2),
   edge_line_ports("classified", "s", "limited", "n", weight = 2),
   edge_line_ports("classified", "s", "anoxic", "n", weight = 2),
+  edge_line_ports("awake", "s", "imv12", "n", weight = 2),
+  edge_line_ports("limited", "s", "imv12", "n", weight = 2),
+  edge_line_ports("anoxic", "s", "imv12", "n", weight = 2),
   "}",
   sep = "\n"
 )
@@ -203,9 +237,9 @@ pdf_path <- file.path(figure_dir, "figure_consort_cohort_flow.pdf")
 tiff_path <- file.path(figure_dir, "figure_consort_cohort_flow.tiff")
 
 writeLines(svg, svg_path)
-rsvg::rsvg_pdf(charToRaw(svg), pdf_path, width = 11, height = 8.2)
+rsvg::rsvg_pdf(charToRaw(svg), pdf_path, width = 11, height = 9.0)
 png_tmp <- tempfile(fileext = ".png")
-rsvg::rsvg_png(charToRaw(svg), png_tmp, width = 6600, height = 4920)
+rsvg::rsvg_png(charToRaw(svg), png_tmp, width = 6600, height = 5400)
 if (requireNamespace("magick", quietly = TRUE)) {
   magick::image_read(png_tmp) |>
     magick::image_background("white", flatten = TRUE) |>
