@@ -7,13 +7,14 @@ if (length(missing_packages) > 0) {
 }
 
 repo_root <- normalizePath(getwd(), winslash = "/", mustWork = TRUE)
+pooled_dir <- file.path(repo_root, "output", "final", "federated_pooled")
 figure_dir <- file.path(repo_root, "output", "final", "manuscript_figures")
 dir.create(figure_dir, recursive = TRUE, showWarnings = FALSE)
 
 cif_path <- file.path(figure_dir, "pooled_icu_outcome_72h_fine_gray_cif_by_tmax_quartile_source.csv")
-shr_path <- file.path(figure_dir, "pooled_fine_gray_primary_spline_shr_forest_source.csv")
+coef_path <- file.path(pooled_dir, "pooled_ohca_icu_competing_risk_awake_extubated_72h_coefficients.csv")
 if (!file.exists(cif_path)) stop("Missing CIF source file: ", cif_path, call. = FALSE)
-if (!file.exists(shr_path)) stop("Missing SHR source file: ", shr_path, call. = FALSE)
+if (!file.exists(coef_path)) stop("Missing pooled Fine-Gray coefficient file: ", coef_path, call. = FALSE)
 
 quartile_levels <- c("Q1 coolest", "Q2", "Q3", "Q4 hottest")
 quartile_colors <- c(
@@ -36,7 +37,46 @@ cif <- readr::read_csv(cif_path, show_col_types = FALSE) |>
   ) |>
   dplyr::filter(!is.na(.data$event_type), !is.na(.data$stratum))
 
-shr <- readr::read_csv(shr_path, show_col_types = FALSE) |>
+shr_source <- readr::read_csv(coef_path, show_col_types = FALSE) |>
+  dplyr::filter(
+    grepl("spline", .data$coefficient),
+    .data$model %in% c(
+      "awake_extubated_72h_vs_death_72h_temperature_humidity_demographics",
+      "awake_extubated_72h_vs_death_72h_temperature_humidity_demographics_mechanism"
+    )
+  ) |>
+  dplyr::mutate(
+    model_label = dplyr::recode(
+      .data$model,
+      awake_extubated_72h_vs_death_72h_temperature_humidity_demographics = "Primary",
+      awake_extubated_72h_vs_death_72h_temperature_humidity_demographics_mechanism = "Mechanism-adjusted"
+    ),
+    exposure = dplyr::case_when(
+      grepl("^tmax", .data$coefficient) ~ "Tmax",
+      grepl("^rmax", .data$coefficient) ~ "Rmax",
+      TRUE ~ NA_character_
+    ),
+    spline_num = as.integer(sub(".*spline[^0-9]*([0-9]+)$", "\\1", .data$coefficient)),
+    term_label = paste(.data$exposure, "spline", .data$spline_num),
+    ci_label = sprintf(
+      "%.2f (%.2f, %.2f)",
+      .data$subdistribution_hr,
+      .data$subdistribution_hr_low,
+      .data$subdistribution_hr_high
+    )
+  ) |>
+  dplyr::filter(!is.na(.data$exposure), is.finite(.data$spline_num))
+
+readr::write_csv(
+  shr_source,
+  file.path(figure_dir, "pooled_fine_gray_primary_spline_shr_forest_source.csv")
+)
+readr::write_csv(
+  shr_source,
+  file.path(figure_dir, "figure_fine_gray_spline_term_forest_source.csv")
+)
+
+shr <- shr_source |>
   dplyr::filter(.data$model_label == "Primary") |>
   dplyr::mutate(
     term_plot = dplyr::case_when(

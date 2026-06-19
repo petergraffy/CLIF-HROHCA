@@ -36,6 +36,17 @@ output_dir <- file.path(repo_root, "output", "final", "ohca_tmax", "icu_admissio
 figure_dir <- file.path(repo_root, "output", "final", "manuscript_figures")
 dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
 dir.create(figure_dir, recursive = TRUE, showWarnings = FALSE)
+unlink(file.path(output_dir, c(
+  "ohca_icu_admission_rate_dlnm_results.csv",
+  "ohca_icu_admission_rate_dlnm_curves.csv",
+  "ohca_icu_admission_rate_dlnm_reduced_coefficients.csv",
+  "ohca_icu_admission_rate_dlnm_reduced_vcov.csv",
+  "ohca_icu_admission_rate_dlnm_lag_summaries.csv",
+  "ohca_icu_admission_rate_dlnm_lag_specific_summaries.csv",
+  "ohca_icu_admission_rate_dlnm_lag_temperature_surface.csv",
+  "ohca_icu_admission_rate_dlnm_contrast_summaries.csv",
+  "ohca_icu_admission_rate_dlnm_lag_temperature_surface_plots.pdf"
+)))
 
 START_DATE <- as.Date("2018-01-01")
 END_DATE <- as.Date("2024-12-31")
@@ -113,6 +124,58 @@ build_formula <- function(extra_terms = character(), time_term = "ns(time_index,
   as.formula(paste("ohca_admissions ~", paste(rhs, collapse = " + ")))
 }
 
+make_nonestimable_rate_result <- function(df, label, model, reference, time_df_per_year, include_dow, include_year, reason, covariate_notes = NA_character_) {
+  data.frame(
+    analysis_period = ANALYSIS_PERIOD_LABEL,
+    stratum = label,
+    model = model,
+    n_days = nrow(df),
+    n_ohca = if ("ohca_admissions" %in% names(df)) sum(df$ohca_admissions, na.rm = TRUE) else NA_real_,
+    n_icu_admissions = if ("denominator_icu_admissions" %in% names(df)) sum(df$denominator_icu_admissions, na.rm = TRUE) else NA_real_,
+    denominator_source = if ("denominator_source" %in% names(df) && length(unique(stats::na.omit(df$denominator_source))) > 0) unique(stats::na.omit(df$denominator_source))[[1]] else NA_character_,
+    crude_ohca_per_100_icu_admissions = if (
+      "ohca_admissions" %in% names(df) &&
+        "denominator_icu_admissions" %in% names(df) &&
+        sum(df$denominator_icu_admissions, na.rm = TRUE) > 0
+    ) {
+      100 * sum(df$ohca_admissions, na.rm = TRUE) / sum(df$denominator_icu_admissions, na.rm = TRUE)
+    } else {
+      NA_real_
+    },
+    reference_type = reference,
+    reference_temp_c = NA_real_,
+    hot_temp_c = NA_real_,
+    cumulative_rate_ratio = NA_real_,
+    cumulative_rate_ratio_low = NA_real_,
+    cumulative_rate_ratio_high = NA_real_,
+    log_rate_ratio = NA_real_,
+    log_rate_ratio_se = NA_real_,
+    dispersion = NA_real_,
+    model_family = "quasipoisson_rate_offset",
+    time_df_per_year = time_df_per_year,
+    includes_day_of_week = include_dow,
+    includes_year_fixed_effect = include_year,
+    estimable = FALSE,
+    converged = FALSE,
+    covariate_notes = covariate_notes,
+    skip_reason = reason,
+    stringsAsFactors = FALSE
+  )
+}
+
+make_nonestimable_rate_fit <- function(df, label, model, reference, time_df_per_year, include_dow, include_year, reason, covariate_notes = NA_character_) {
+  list(
+    result = make_nonestimable_rate_result(df, label, model, reference, time_df_per_year, include_dow, include_year, reason, covariate_notes),
+    curve = NULL,
+    reduced_coef = NULL,
+    reduced_vcov = NULL,
+    lag_summary = NULL,
+    lag_specific = NULL,
+    lag_temperature_surface = NULL,
+    contrast_summary = NULL
+  )
+}
+
 run_rate_dlnm_spec <- function(
   df,
   label = "Overall",
@@ -132,19 +195,31 @@ run_rate_dlnm_spec <- function(
     df <- df[is.finite(suppressWarnings(as.numeric(df[[needed_col]]))), , drop = FALSE]
   }
   df <- df[df$denominator_icu_admissions > 0, , drop = FALSE]
-  if (nrow(df) <= MAX_LAG + 14L) stop("Only ", nrow(df), " complete denominator/exposure days after filtering", call. = FALSE)
-  if (sum(df$ohca_admissions, na.rm = TRUE) == 0L) stop("No OHCA admissions available", call. = FALSE)
-  if (finite_unique_n(df$icu_patient_address_mean_tmax_c) < 2L) stop("Temperature exposure is constant or unavailable", call. = FALSE)
+  if (nrow(df) <= MAX_LAG + 14L) {
+    return(make_nonestimable_rate_fit(df, label, model, reference, time_df_per_year, include_dow, include_year, paste0("Only ", nrow(df), " complete denominator/exposure days after filtering")))
+  }
+  if (sum(df$ohca_admissions, na.rm = TRUE) == 0L) {
+    return(make_nonestimable_rate_fit(df, label, model, reference, time_df_per_year, include_dow, include_year, "No OHCA admissions available"))
+  }
+  if (finite_unique_n(df$icu_patient_address_mean_tmax_c) < 2L) {
+    return(make_nonestimable_rate_fit(df, label, model, reference, time_df_per_year, include_dow, include_year, "Temperature exposure is constant or unavailable"))
+  }
 
   df$time_index <- seq_len(nrow(df))
   temp_unique <- finite_unique_n(df$icu_patient_address_mean_tmax_c)
   temp_var_df <- min(VAR_DF, max(2L, temp_unique - 1L))
-  cb_temp <- crossbasis(
-    df$icu_patient_address_mean_tmax_c,
-    lag = MAX_LAG,
-    argvar = list(fun = "ns", df = temp_var_df),
-    arglag = list(fun = "ns", df = LAG_DF)
+  cb_temp <- tryCatch(
+    crossbasis(
+      df$icu_patient_address_mean_tmax_c,
+      lag = MAX_LAG,
+      argvar = list(fun = "ns", df = temp_var_df),
+      arglag = list(fun = "ns", df = LAG_DF)
+    ),
+    error = function(e) e
   )
+  if (inherits(cb_temp, "error")) {
+    return(make_nonestimable_rate_fit(df, label, model, reference, time_df_per_year, include_dow, include_year, paste0("Rate DLNM crossbasis failed: ", conditionMessage(cb_temp))))
+  }
 
   extra_info <- sanitize_extra_terms(df, extra_terms)
   requested_time_df <- length(unique(df$year)) * time_df_per_year
@@ -160,13 +235,43 @@ run_rate_dlnm_spec <- function(
   environment(formula_spec) <- environment()
   environment(formula_spec)$time_df <- time_info$df
 
-  fit <- glm(formula_spec, data = df, family = quasipoisson(link = "log"))
+  design <- tryCatch(stats::model.matrix(formula_spec, data = df), error = function(e) e)
+  if (inherits(design, "error")) {
+    return(make_nonestimable_rate_fit(df, label, model, reference, time_df_per_year, model_include_dow, model_include_year, paste0("Rate DLNM design matrix failed: ", conditionMessage(design)), paste(extra_info$notes, collapse = "; ")))
+  }
+  if (any(!is.finite(design))) {
+    bad_cols <- names(which(colSums(!is.finite(design)) > 0L))
+    return(make_nonestimable_rate_fit(df, label, model, reference, time_df_per_year, model_include_dow, model_include_year, paste0("Non-finite values found in rate DLNM design matrix. Columns: ", paste(bad_cols, collapse = ", ")), paste(extra_info$notes, collapse = "; ")))
+  }
+
+  fit <- tryCatch(
+    suppressWarnings(glm(formula_spec, data = df, family = quasipoisson(link = "log"), control = glm.control(maxit = 100))),
+    error = function(e) e
+  )
+  if (inherits(fit, "error")) {
+    return(make_nonestimable_rate_fit(df, label, model, reference, time_df_per_year, model_include_dow, model_include_year, paste0("Rate DLNM GLM failed: ", conditionMessage(fit)), paste(extra_info$notes, collapse = "; ")))
+  }
+  if (!isTRUE(fit$converged) || any(!is.finite(stats::coef(fit)))) {
+    return(make_nonestimable_rate_fit(df, label, model, reference, time_df_per_year, model_include_dow, model_include_year, "Rate DLNM GLM did not converge or produced non-finite coefficients", paste(extra_info$notes, collapse = "; ")))
+  }
+
   grid <- make_prediction_grid(df$icu_patient_address_mean_tmax_c)
   initial_center <- median(df$icu_patient_address_mean_tmax_c, na.rm = TRUE)
-  pred_initial <- crosspred(cb_temp, fit, cen = initial_center, at = grid)
-  center <- if (reference == "median") initial_center else grid[which.min(pred_initial$allRRfit)]
-  pred <- crosspred(cb_temp, fit, cen = center, at = grid, cumul = TRUE)
-  reduced <- crossreduce(cb_temp, fit, cen = center)
+  prediction_objects <- tryCatch({
+    pred_initial <- crosspred(cb_temp, fit, cen = initial_center, at = grid)
+    center <- if (reference == "median") initial_center else grid[which.min(pred_initial$allRRfit)]
+    list(
+      center = center,
+      pred = crosspred(cb_temp, fit, cen = center, at = grid, cumul = TRUE),
+      reduced = crossreduce(cb_temp, fit, cen = center)
+    )
+  }, error = function(e) e)
+  if (inherits(prediction_objects, "error")) {
+    return(make_nonestimable_rate_fit(df, label, model, reference, time_df_per_year, model_include_dow, model_include_year, paste0("Rate DLNM prediction failed: ", conditionMessage(prediction_objects)), paste(extra_info$notes, collapse = "; ")))
+  }
+  center <- prediction_objects$center
+  pred <- prediction_objects$pred
+  reduced <- prediction_objects$reduced
   hot_temp <- grid[which.min(abs(grid - safe_quantile(df$icu_patient_address_mean_tmax_c, 0.95)))]
   hot_index <- which.min(abs(grid - hot_temp))
 
@@ -467,29 +572,37 @@ for (nm in names(strata_specs)) {
   )
 }
 
-results_df <- do.call(rbind, lapply(fits, `[[`, "result"))
-curves_df <- do.call(rbind, lapply(fits, `[[`, "curve"))
-reduced_coef_df <- do.call(rbind, lapply(fits, `[[`, "reduced_coef"))
-reduced_vcov_df <- do.call(rbind, lapply(fits, `[[`, "reduced_vcov"))
-lag_summary_df <- do.call(rbind, lapply(fits, `[[`, "lag_summary"))
-lag_specific_df <- do.call(rbind, lapply(fits, `[[`, "lag_specific"))
-lag_temperature_surface_df <- do.call(rbind, lapply(fits, `[[`, "lag_temperature_surface"))
-contrast_summary_df <- do.call(rbind, lapply(fits, `[[`, "contrast_summary"))
+bind_nonnull <- function(rows) {
+  rows <- rows[!vapply(rows, is.null, logical(1))]
+  if (length(rows) == 0L) return(data.frame())
+  dplyr::bind_rows(rows)
+}
+
+results_df <- bind_nonnull(lapply(fits, `[[`, "result"))
+curves_df <- bind_nonnull(lapply(fits, `[[`, "curve"))
+reduced_coef_df <- bind_nonnull(lapply(fits, `[[`, "reduced_coef"))
+reduced_vcov_df <- bind_nonnull(lapply(fits, `[[`, "reduced_vcov"))
+lag_summary_df <- bind_nonnull(lapply(fits, `[[`, "lag_summary"))
+lag_specific_df <- bind_nonnull(lapply(fits, `[[`, "lag_specific"))
+lag_temperature_surface_df <- bind_nonnull(lapply(fits, `[[`, "lag_temperature_surface"))
+contrast_summary_df <- bind_nonnull(lapply(fits, `[[`, "contrast_summary"))
 
 readr::write_csv(results_df, file.path(output_dir, "ohca_icu_admission_rate_dlnm_results.csv"))
-readr::write_csv(curves_df, file.path(output_dir, "ohca_icu_admission_rate_dlnm_curves.csv"))
-readr::write_csv(reduced_coef_df, file.path(output_dir, "ohca_icu_admission_rate_dlnm_reduced_coefficients.csv"))
-readr::write_csv(reduced_vcov_df, file.path(output_dir, "ohca_icu_admission_rate_dlnm_reduced_vcov.csv"))
-readr::write_csv(lag_summary_df, file.path(output_dir, "ohca_icu_admission_rate_dlnm_lag_summaries.csv"))
-readr::write_csv(lag_specific_df, file.path(output_dir, "ohca_icu_admission_rate_dlnm_lag_specific_summaries.csv"))
-readr::write_csv(lag_temperature_surface_df, file.path(output_dir, "ohca_icu_admission_rate_dlnm_lag_temperature_surface.csv"))
-readr::write_csv(contrast_summary_df, file.path(output_dir, "ohca_icu_admission_rate_dlnm_contrast_summaries.csv"))
-invisible(write_dlnm_lag_temperature_surface_pdf(
-  lag_temperature_surface_df,
-  file.path(output_dir, "ohca_icu_admission_rate_dlnm_lag_temperature_surface_plots.pdf"),
-  effect_col = "rate_ratio",
-  title_prefix = paste("Rate DLNM", ANALYSIS_PERIOD_LABEL)
-))
+if (nrow(curves_df) > 0) readr::write_csv(curves_df, file.path(output_dir, "ohca_icu_admission_rate_dlnm_curves.csv"))
+if (nrow(reduced_coef_df) > 0) readr::write_csv(reduced_coef_df, file.path(output_dir, "ohca_icu_admission_rate_dlnm_reduced_coefficients.csv"))
+if (nrow(reduced_vcov_df) > 0) readr::write_csv(reduced_vcov_df, file.path(output_dir, "ohca_icu_admission_rate_dlnm_reduced_vcov.csv"))
+if (nrow(lag_summary_df) > 0) readr::write_csv(lag_summary_df, file.path(output_dir, "ohca_icu_admission_rate_dlnm_lag_summaries.csv"))
+if (nrow(lag_specific_df) > 0) readr::write_csv(lag_specific_df, file.path(output_dir, "ohca_icu_admission_rate_dlnm_lag_specific_summaries.csv"))
+if (nrow(lag_temperature_surface_df) > 0) {
+  readr::write_csv(lag_temperature_surface_df, file.path(output_dir, "ohca_icu_admission_rate_dlnm_lag_temperature_surface.csv"))
+  invisible(write_dlnm_lag_temperature_surface_pdf(
+    lag_temperature_surface_df,
+    file.path(output_dir, "ohca_icu_admission_rate_dlnm_lag_temperature_surface_plots.pdf"),
+    effect_col = "rate_ratio",
+    title_prefix = paste("Rate DLNM", ANALYSIS_PERIOD_LABEL)
+  ))
+}
+if (nrow(contrast_summary_df) > 0) readr::write_csv(contrast_summary_df, file.path(output_dir, "ohca_icu_admission_rate_dlnm_contrast_summaries.csv"))
 readr::write_csv(rate_denominator_summary, file.path(output_dir, "ohca_icu_admission_rate_denominator_summary.csv"))
 readr::write_csv(rate_time_series, file.path(output_dir, "ohca_icu_admission_rate_daily_timeseries.csv"))
 

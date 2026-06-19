@@ -75,8 +75,37 @@ pretty_phenotype <- function(x) {
   )
 }
 
+normalize_demographic_levels <- function(df) {
+  df |>
+    dplyr::mutate(
+      level_clean = stringr::str_to_lower(stringr::str_squish(as.character(.data$level))),
+      level = dplyr::case_when(
+        .data$characteristic == "Sex" & .data$level_clean == "male" ~ "Male",
+        .data$characteristic == "Sex" & .data$level_clean == "female" ~ "Female",
+        .data$characteristic == "Sex" & .data$level_clean == "unknown" ~ "Unknown",
+        .data$characteristic == "Sex" & .data$level_clean == "missing" ~ "Missing",
+        .data$characteristic == "Ethnicity" & .data$level_clean == "hispanic" ~ "Hispanic",
+        .data$characteristic == "Ethnicity" & .data$level_clean == "non-hispanic" ~ "Non-Hispanic",
+        .data$characteristic == "Ethnicity" & .data$level_clean == "unknown" ~ "Unknown",
+        .data$characteristic == "Ethnicity" & .data$level_clean == "missing" ~ "Missing",
+        .data$characteristic == "Race" & .data$level_clean == "american indian or alaska native" ~ "American Indian or Alaska Native",
+        .data$characteristic == "Race" & .data$level_clean == "asian" ~ "Asian",
+        .data$characteristic == "Race" & .data$level_clean == "black or african american" ~ "Black or African American",
+        .data$characteristic == "Race" & .data$level_clean == "native hawaiian or other pacific islander" ~ "Native Hawaiian or Other Pacific Islander",
+        .data$characteristic == "Race" & .data$level_clean == "other" ~ "Other",
+        .data$characteristic == "Race" & .data$level_clean == "unknown" ~ "Unknown",
+        .data$characteristic == "Race" & .data$level_clean == "missing" ~ "Missing",
+        .data$characteristic == "Race" & .data$level_clean == "white" ~ "White",
+        TRUE ~ .data$level
+      )
+    ) |>
+    dplyr::select(-"level_clean")
+}
+
 table1_site <- read_required("all_site_ohca_icu_72h_table1.csv")
 table2_site <- read_required("all_site_ohca_icu_72h_table2_by_phenotype.csv")
+table1_site <- normalize_demographic_levels(table1_site)
+table2_site <- normalize_demographic_levels(table2_site)
 phenotype_summary <- read_required("all_site_ohca_icu_72h_phenotype_summary.csv")
 ed_death_summary <- read_required("all_site_ohca_ed_only_death_never_icu_summary.csv")
 
