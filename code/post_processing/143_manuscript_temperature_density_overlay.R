@@ -82,4 +82,69 @@ pdf_path <- file.path(figure_dir, "figure_ohca_icu_admission_temperature_density
 ggplot2::ggsave(png_path, figure_density, width = 7.4, height = 4.6, dpi = 600)
 ggplot2::ggsave(pdf_path, figure_density, width = 7.4, height = 4.6)
 
-message("Wrote admission-temperature density overlay to ", png_path, " and ", pdf_path)
+label_data <- plot_density |>
+  dplyr::group_by(.data$site_name) |>
+  dplyr::slice_max(.data$tmax_f, n = 1, with_ties = FALSE) |>
+  dplyr::ungroup()
+
+figure_density_labeled <- figure_density +
+  ggplot2::geom_text(
+    data = label_data,
+    ggplot2::aes(label = .data$site_name),
+    hjust = -0.05,
+    size = 3.3,
+    fontface = "bold",
+    show.legend = FALSE
+  ) +
+  ggplot2::scale_x_continuous(
+    name = "Admission Tmax (°F)",
+    breaks = seq(-10, 110, 10),
+    limits = x_limits + c(0, 5),
+    expand = ggplot2::expansion(mult = c(0.01, 0.02))
+  )
+
+figure_density_facets <- ggplot2::ggplot(
+  plot_density,
+  ggplot2::aes(x = .data$tmax_f, y = .data$density, color = .data$site_name)
+) +
+  ggplot2::geom_line(linewidth = 0.9, alpha = 0.95, show.legend = FALSE) +
+  ggplot2::geom_vline(
+    data = median_lines,
+    ggplot2::aes(xintercept = .data$median_tmax_f, color = .data$site_name),
+    linetype = "dashed",
+    linewidth = 0.55,
+    alpha = 0.85,
+    show.legend = FALSE
+  ) +
+  ggplot2::facet_wrap(ggplot2::vars(.data$site_name), ncol = 3, scales = "free_y") +
+  ggplot2::scale_x_continuous(
+    name = "Admission Tmax (°F)",
+    breaks = seq(-10, 110, 20),
+    limits = x_limits,
+    expand = ggplot2::expansion(mult = c(0.01, 0.02))
+  ) +
+  ggplot2::scale_y_continuous(
+    name = "Density",
+    labels = scales::label_number(accuracy = 0.001),
+    expand = ggplot2::expansion(mult = c(0, 0.06))
+  ) +
+  ggplot2::theme_classic(base_size = 12) +
+  ggplot2::theme(
+    strip.text = ggplot2::element_text(face = "bold"),
+    axis.title = ggplot2::element_text(face = "bold"),
+    panel.grid = ggplot2::element_blank()
+  )
+
+labeled_png_path <- file.path(figure_dir, "figure_ohca_icu_admission_temperature_density_overlay_labeled.png")
+labeled_pdf_path <- file.path(figure_dir, "figure_ohca_icu_admission_temperature_density_overlay_labeled.pdf")
+facets_png_path <- file.path(figure_dir, "figure_ohca_icu_admission_temperature_density_by_site_facets.png")
+facets_pdf_path <- file.path(figure_dir, "figure_ohca_icu_admission_temperature_density_by_site_facets.pdf")
+ggplot2::ggsave(labeled_png_path, figure_density_labeled, width = 8.4, height = 4.6, dpi = 600)
+ggplot2::ggsave(labeled_pdf_path, figure_density_labeled, width = 8.4, height = 4.6)
+ggplot2::ggsave(facets_png_path, figure_density_facets, width = 8.4, height = 6.8, dpi = 600)
+ggplot2::ggsave(facets_pdf_path, figure_density_facets, width = 8.4, height = 6.8)
+
+message(
+  "Wrote admission-temperature density figures to ",
+  paste(c(png_path, labeled_png_path, facets_png_path), collapse = ", ")
+)
