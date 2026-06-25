@@ -134,6 +134,18 @@ safe_chr <- function(x) {
   stringr::str_squish(x)
 }
 
+coerce_numeric_vector <- function(x) {
+  if (is.null(x)) return(numeric())
+  if (is.data.frame(x) || is.list(x)) x <- unlist(x, recursive = TRUE, use.names = FALSE)
+  if (is.factor(x)) x <- as.character(x)
+  suppressWarnings(as.numeric(x))
+}
+
+finite_numeric <- function(x) {
+  x <- coerce_numeric_vector(x)
+  x[is.finite(x)]
+}
+
 ensure_columns <- function(df, columns) {
   if (is.null(df)) df <- tibble::tibble()
   for (column in columns) {
@@ -148,8 +160,7 @@ fmt_n_pct <- function(n, denom) {
 }
 
 fmt_median_iqr <- function(x) {
-  x <- suppressWarnings(as.numeric(x))
-  x <- x[is.finite(x)]
+  x <- finite_numeric(x)
   if (length(x) == 0L) return(NA_character_)
   sprintf(
     "%.1f [%.1f, %.1f]",
@@ -160,15 +171,13 @@ fmt_median_iqr <- function(x) {
 }
 
 fmt_mean_sd <- function(x) {
-  x <- suppressWarnings(as.numeric(x))
-  x <- x[is.finite(x)]
+  x <- finite_numeric(x)
   if (length(x) == 0L) return(NA_character_)
   sprintf("%.1f (%.1f)", mean(x, na.rm = TRUE), stats::sd(x, na.rm = TRUE))
 }
 
 fmt_median_iqr_n <- function(x) {
-  x <- suppressWarnings(as.numeric(x))
-  x <- x[is.finite(x)]
+  x <- finite_numeric(x)
   if (length(x) == 0L) return(NA_character_)
   sprintf("%s; n=%s", fmt_median_iqr(x), format(length(x), big.mark = ","))
 }
@@ -1630,6 +1639,14 @@ sofa_long <- calculate_sofa_windows(
 )
 sofa_wide <- sofa_long |>
   select("hospitalization_id", "sofa_window_hours", "sofa_total") |>
+  group_by(.data$hospitalization_id, .data$sofa_window_hours) |>
+  summarise(
+    sofa_total = {
+      sofa_values <- finite_numeric(.data$sofa_total)
+      if (length(sofa_values) == 0L) NA_real_ else stats::median(sofa_values, na.rm = TRUE)
+    },
+    .groups = "drop"
+  ) |>
   tidyr::pivot_wider(names_from = "sofa_window_hours", values_from = "sofa_total", names_prefix = "sofa_total_") |>
   rename(
     sofa_total_24h = "sofa_total_24",
