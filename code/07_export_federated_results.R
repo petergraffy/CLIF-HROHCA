@@ -31,7 +31,19 @@ dir.create(figure_export_dir, recursive = TRUE, showWarnings = FALSE)
 
 copy_csv <- function(path, suffix) {
   if (!file.exists(path)) return(FALSE)
-  dat <- read.csv(path, stringsAsFactors = FALSE)
+  file_size <- file.info(path)$size
+  if (is.na(file_size) || file_size == 0) {
+    warning("Skipping empty federated export source: ", path, call. = FALSE)
+    return(FALSE)
+  }
+  dat <- tryCatch(
+    read.csv(path, stringsAsFactors = FALSE),
+    error = function(e) {
+      warning("Skipping unreadable federated export source: ", path, " (", conditionMessage(e), ")", call. = FALSE)
+      NULL
+    }
+  )
+  if (is.null(dat)) return(FALSE)
   dat$site_name <- site_name
   dat <- dat[, c("site_name", setdiff(names(dat), "site_name"))]
   write.csv(dat, file.path(output_dir, paste0(site_name, "_", suffix, ".csv")), row.names = FALSE)
