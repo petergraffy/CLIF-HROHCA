@@ -81,6 +81,10 @@ The primary contrast is 30°C versus 20°C over lag days 0–5. Additional fixed
 contrasts at 31–35°C use the same 20°C reference. The local-percentile model
 uses each site's 95th percentile and median instead. Check the contributing
 sites for each pooled result, particularly near the upper temperature tail.
+`site_reference_sensitivity.csv` and `pooled_reference_sensitivity.csv`
+compare fixed hot temperatures with every whole degree from 15°C through 25°C using the same fitted
+models and county-days. The support rule is applied to each contrast before
+pooling, with the two PM2.5 models pooled over the same sites at each reference.
 
 `site_partial_lags.csv` and `pooled_partial_lags.csv` report cumulative
 associations through each lag day from the full lag 0–5 fits. The separate

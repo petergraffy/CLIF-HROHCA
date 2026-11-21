@@ -25,6 +25,7 @@ if (!nzchar(pm_path) && !nzchar(lghap_dir)) {
 historical_dir <- Sys.getenv("AIM1_HISTORICAL_DIR")
 proxy_sites <- strsplit(Sys.getenv("AIM1_PROXY_SITES"), ",", fixed = TRUE)[[1L]]
 cold <- 20
+reference_temperatures <- 15:25
 hot <- suppressWarnings(as.numeric(Sys.getenv("AIM1_HOT_C", unset = "30")))
 if (!is.finite(hot) || hot <= cold) stop("AIM1_HOT_C must be a temperature above 20 C.")
 temp_basis <- list(fun = "ns", knots = c(0, 15, 25), Boundary.knots = c(-40, 45))
@@ -218,14 +219,32 @@ fit_site <- function(d, model) {
     ref <- median(z)
     high <- as.numeric(quantile(z, .95))
   }
-  contrast <- do.call(ns, c(list(x = c(high, ref)), temp_basis[names(temp_basis) != "fun"]))
-  contrast <- contrast[1, , drop = FALSE] - contrast[2, , drop = FALSE]
-  estimate <- drop(contrast %*% coef(reduced))
-  se <- sqrt(drop(contrast %*% vcov(reduced) %*% t(contrast)))
-  near_ref <- sum(abs(temp - ref) <= 1, na.rm = TRUE)
   near_hot <- sum(abs(temp - high) <= 1, na.rm = TRUE)
-  support <- near_ref >= 10L && near_hot >= 10L &&
-    min(temp, na.rm = TRUE) <= ref && max(temp, na.rm = TRUE) >= high
+  temp_range <- range(temp, na.rm = TRUE)
+  contrast_at <- function(reference_c) {
+    basis <- do.call(ns, c(list(x = c(high, reference_c)), temp_basis[names(temp_basis) != "fun"]))
+    contrast <- basis[1, , drop = FALSE] - basis[2, , drop = FALSE]
+    estimate <- drop(contrast %*% coef(reduced))
+    se <- sqrt(drop(contrast %*% vcov(reduced) %*% t(contrast)))
+    near_ref <- sum(abs(temp - reference_c) <= 1, na.rm = TRUE)
+    data.frame(reference_c, hot_c = high, near_ref, near_hot,
+               supported = near_ref >= 10L && near_hot >= 10L &&
+                 temp_range[1] <= reference_c && temp_range[2] >= high,
+               log_rr = estimate, se, rr = exp(estimate),
+               low = exp(estimate - 1.96 * se), high = exp(estimate + 1.96 * se))
+  }
+  primary_contrast <- contrast_at(ref)
+  estimate <- primary_contrast$log_rr
+  support <- primary_contrast$supported
+  reference_sensitivity <- NULL
+  if (model != "local_percentiles") {
+    references <- reference_temperatures[reference_temperatures < high]
+    reference_sensitivity <- cbind(
+      site = d$site_name[[1L]], source = d$source[[1L]], model,
+      lag_min = lag[1], lag_max = lag[2], n_days = nrow(x),
+      bind_rows(lapply(references, contrast_at))
+    )
+  }
   partial <- NULL
   daily <- NULL
   if (identical(lag, c(0, 5))) {
@@ -267,22 +286,21 @@ fit_site <- function(d, model) {
       daily_influence <- aggregate(score ~ date, data = data.frame(date = x$date, score), FUN = sum)
     }
   }
-  list(estimates = data.frame(
+  list(estimates = cbind(
     site = d$site_name[[1L]], source = d$source[[1L]], model, lag_min = lag[1], lag_max = lag[2],
     n_days = nrow(x), n_ohca = sum(x$ohca_admissions), n_icu = sum(x$n_icu_admissions),
-    n_outcomes = sum(x$y), reference_c = ref, hot_c = high,
-    near_ref, near_hot, supported = support, log_rr = estimate, se,
-    rr = exp(estimate), low = exp(estimate - 1.96 * se), high = exp(estimate + 1.96 * se),
+    n_outcomes = sum(x$y), primary_contrast,
     dispersion = if (model == "case_crossover") NA_real_ else summary(fit)$dispersion,
     lag1_residual_correlation = lag1_acf, formula = paste(deparse(f), collapse = " ")
   ), coefficients = coef(reduced), covariance = vcov(reduced),
+  reference_sensitivity = reference_sensitivity,
   partial_lags = partial, individual_lags = daily,
   temperature_support = if (model %in% c("ohca_count", "all_icu_count", "icu_offset")) {
     bins <- floor(temp + 0.5)
     data.frame(site = d$site_name[[1L]], temp_c = sort(unique(bins)),
                observations = as.integer(table(bins)))
   },
-  temp_range = range(temp, na.rm = TRUE), daily_influence = daily_influence)
+  temp_range = temp_range, daily_influence = daily_influence)
 }
 
 fits <- list()
@@ -327,6 +345,23 @@ for (name in unique(est$model)) {
   }
 }
 pooled_estimates <- bind_rows(pooled)
+reference_estimates <- bind_rows(lapply(fits, "[[", "reference_sensitivity"))
+pooled_references <- data.frame()
+if (nrow(reference_estimates)) {
+  reference_eligible <- filter(reference_estimates, supported, source != "archived_flagship_proxy")
+  matched_pm <- reference_eligible |>
+    filter(model %in% pm_models) |>
+    count(site, reference_c, hot_c, name = "n_models") |>
+    filter(n_models == length(pm_models))
+  pooled_references <- bind_rows(
+    filter(reference_eligible, !model %in% pm_models),
+    semi_join(filter(reference_eligible, model %in% pm_models), matched_pm,
+              by = c("site", "reference_c", "hot_c"))
+  ) |>
+    group_by(model, lag_min, lag_max, reference_c, hot_c) |>
+    group_modify(function(d, key) if (nrow(d) >= 2L) pool(d) else tibble()) |>
+    ungroup()
+}
 partial_lags <- bind_rows(lapply(fits, "[[", "partial_lags"))
 individual_lags <- bind_rows(lapply(fits, "[[", "individual_lags"))
 pool_lags <- function(estimates, cumulative) {
@@ -457,6 +492,8 @@ covariances <- bind_rows(lapply(fits, function(x)
 dir.create(out, recursive = TRUE, showWarnings = FALSE)
 outputs <- list(site_estimates = est, model_status = bind_rows(status), coverage = audit,
                 pooled_estimates = pooled_estimates, pm25_sensitivity = pm_summary,
+                site_reference_sensitivity = reference_estimates,
+                pooled_reference_sensitivity = pooled_references,
                 site_partial_lags = partial_lags, pooled_partial_lags = pooled_partial,
                 site_individual_lags = individual_lags, pooled_individual_lags = pooled_individual,
                 leave_one_site_out = bind_rows(leaveout),
@@ -482,6 +519,7 @@ if (nzchar(historical_dir)) {
 write.csv(data.frame(path = normalizePath(sources), md5 = unname(tools::md5sum(sources))),
           file.path(out, "input_manifest.csv"), row.names = FALSE)
 writeLines(c(sprintf("Fixed temperature contrast: %g versus %g C", hot, cold),
+             "Reference-temperature sensitivity: every integer from 15 through 25 C from the same fitted models",
              "Temperature interior knots: 0, 15, 25 C; boundary knots: -40, 45 C",
              "Lag spline interior knot: min lag + 0.4 * lag range; boundaries: lag endpoints",
              "Lag 0-1 and 0-2 refits: separate coefficients for each lag; partial lags: sums from the lag 0-5 fit",
