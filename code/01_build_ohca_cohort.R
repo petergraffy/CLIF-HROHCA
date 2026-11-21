@@ -87,17 +87,18 @@ collapse_pathway <- function(x) {
   paste(x, collapse = " -> ")
 }
 
-aim1_args <- commandArgs(trailingOnly = TRUE)
-aim1_export <- length(aim1_args) == 2L && aim1_args[[1L]] == "--aim1-export"
+export_args <- commandArgs(trailingOnly = TRUE)
+aim1_export <- length(export_args) == 2L && export_args[[1L]] == "--aim1-export"
+aim2_export <- length(export_args) == 2L && export_args[[1L]] == "--aim2-export"
 config <- load_project_config(repo_root)
-if (aim1_export) config$site_name <- Sys.getenv("CLIF_SITE_NAME", unset = config$site_name)
+if (aim1_export || aim2_export) config$site_name <- Sys.getenv("CLIF_SITE_NAME", unset = config$site_name)
 validate_site_name(config, repo_root)
 tables_path <- resolve_tables_path(config)
 file_type <- resolve_file_type(config)
 site_name <- config$site_name %||% Sys.getenv("CLIF_SITE_NAME", unset = "unknown_site")
 
 output_dir <- file.path(repo_root, "output", "intermediate", "cohorts", "ohca")
-if (!aim1_export) dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
+if (!aim1_export && !aim2_export) dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
 
 patient <- read_clif_table(tables_path, file_type, "patient")
 hospitalization <- read_clif_table(tables_path, file_type, "hospitalization")
@@ -272,12 +273,18 @@ ohca <- ohca_unrestricted |>
 
 if (aim1_export) {
   source(file.path(repo_root, "code", "aim1_hospital_county_export.R"))
-  export_aim1_counts(aim1_args[[2L]], hosp_source, hosp, all_icu, ohca_unrestricted, ohca,
+  export_aim1_counts(export_args[[2L]], hosp_source, hosp, all_icu, ohca_unrestricted, ohca,
                      adt_min, hospitalization, diagnosis_source, repo_root, config,
                      as.Date(START_DATE), as.Date(END_DATE) - 1L)
   quit(save = "no")
 }
 ohca <- apply_site_county_assignment(ohca, repo_root, config)
+if (aim2_export) {
+  source(file.path(repo_root, "code", "aim2_hospital_outcomes.R"))
+  run_aim2_site(export_args[[2L]], ohca, hosp_source, patient, diagnosis, adt_min,
+                diagnosis_source, tables_path, file_type, repo_root, site_name)
+  quit(save = "no")
+}
 
 respiratory <- read_clif_table(tables_path, file_type, "respiratory_support", required = FALSE)
 ohca$imv_any <- 0L

@@ -34,6 +34,66 @@ macOS/Linux:
 Rscript code/00_install_or_restore_packages.R
 ```
 
+## Aim 2 hospital outcomes pilot
+
+With `comorbidity` and `sandwich` installed alongside the usual site R
+dependencies, run the shared cohort builder in Aim 2 mode. It returns
+aggregate CSVs and a model specification. The coordinator can pool site
+estimates with `metafor`.
+
+```bash
+Rscript code/01_build_ohca_cohort.R --aim2-export output/final/aim2/SITE
+Rscript code/post_processing/pool_aim2.R output/final/aim2/pooled output/final/aim2/SITE1 output/final/aim2/SITE2
+```
+
+- **Population and time.** Start at first ICU entry among eligible probable
+  OHCA hospitalizations and follow the index hospital stay through day 28.
+  Death uses a timestamp validated against the index stay where possible and
+  the discharge time for recorded hospital deaths otherwise. Hospice and
+  other live exits compete with hospital death. Acute-care transfers are live
+  exits from the index hospital and are counted separately in the audit.
+- **Exposure and adjustment.** Use preceding-day assigned-county maximum
+  temperature and relative humidity. Compare 30°C with 20°C using a common
+  natural temperature spline, with additional 31–35°C contrasts from the same
+  fit. Pool only sites with at least 10 model observations within 1°C of each
+  contrast temperature and both temperatures in the observed range.
+  Adjust for age, sex, race, ethnicity, Charlson,
+  calendar year and a seasonal sine/cosine pair, plus a humidity spline.
+  The age-free Charlson combines codes from completed hospitalizations in
+  the preceding 365 days with index present-on-admission codes. Index codes
+  for myocardial infarction, cerebrovascular disease, and hemiplegia are
+  excluded from the score because they can reflect the acute event.
+- **Cause-specific Cox.** Fit hospital death, hospice discharge and other live
+  discharge separately with patient-clustered uncertainty. Death or hospice
+  is a composite sensitivity. If a sparse demographic category causes
+  separation, refit all exits at that site with a ridge penalty on the
+  demographic indicator coefficients and record both fit statuses.
+  Report proportional hazards diagnostics,
+  unadjusted Aalen–Johansen estimates, and exploratory adjusted day-28
+  probabilities combining the three exit hazards where all are estimable.
+  `standardized_cif.csv` gives the adjusted probabilities on days 0–28
+  at 20°C and 30–35°C. The CIF plotting script uses cohort-size weights and
+  shows each supported temperature range with the same sites across its curves.
+- **Day-28 risk differences and observed risk counts.** The plotting script
+  reports adjusted day-28 risk differences as point estimates in percentage
+  points for each supported hot temperature versus 20°C. It sums observed
+  numbers at risk over the exact site set for each column and exports the
+  counts at all available days.
+- **Ventilator-free days.** The REFER-style index-stay measure is zero for
+  hospital death by day 28, and otherwise 28 minus cumulative documented
+  invasive ventilation days. Carry invasive support forward up to six hours,
+  stopping at the next respiratory record, end of follow-up, or day 28.
+  The fit excludes early acute-transfer and LTACH exits, early hospice, early
+  discharge with last support still on IMV, incomplete follow-up, and missing
+  respiratory records in patients without an observed hospital death by day 28.
+  Eligible live discharges are assumed alive and off IMV through day 28.
+  Quasi-Poisson estimates include a ratio and standardized difference in
+  mean days, with patient-clustered uncertainty.
+
+```bash
+Rscript code/post_processing/plot_aim2_cif.R output/final/aim2/adjusted_cif output/final/aim2/SITE1 output/final/aim2/SITE2
+```
+
 ## Site Scripts
 
 ### Aim 1 hospital-county pilot
