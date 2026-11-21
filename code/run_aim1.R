@@ -345,6 +345,8 @@ for (name in unique(est$model)) {
   }
 }
 pooled_estimates <- bind_rows(pooled)
+source(file.path(root, "code", "aim1_subgroup_interactions.R"))
+subgroup_outputs <- run_aim1_subgroups(inputs, panels, temp_basis, hot, cold, pool)
 reference_estimates <- bind_rows(lapply(fits, "[[", "reference_sensitivity"))
 pooled_references <- data.frame()
 if (nrow(reference_estimates)) {
@@ -506,12 +508,15 @@ outputs <- list(site_estimates = est, model_status = bind_rows(status), coverage
                 offset_temperature_support = bind_rows(lapply(offset_fits, "[[", "temperature_support")),
                 reduced_coefficients = coefficients,
                 reduced_covariances = covariances)
+outputs <- c(outputs, subgroup_outputs)
 for (name in names(outputs)) write.csv(outputs[[name]], file.path(out, paste0(name, ".csv")), row.names = FALSE)
 sources <- c(inputs, file.path(root, "reference/clif_hospital_geography.csv"),
              Sys.glob(file.path(root, "exposome", "daymet_county_*2018_2024*.parquet")),
              pm_files)
 coverage_sources <- paste0(inputs, ".coverage.csv")
 sources <- c(sources, coverage_sources[file.exists(coverage_sources)])
+subgroup_sources <- paste0(inputs, ".subgroups.csv")
+sources <- c(sources, subgroup_sources[file.exists(subgroup_sources)])
 if (nzchar(historical_dir)) {
   historical_sources <- file.path(historical_dir, paste0(audit$site_name, "_ohca_icu_admission_rate_daily_timeseries.csv"))
   sources <- unique(c(sources, historical_sources[file.exists(historical_sources)]))

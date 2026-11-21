@@ -110,6 +110,25 @@ The runner writes site estimates, pooling and shared-date sensitivity results,
 coverage, reduced coefficients and covariance matrices, model status, and
 input checksums.
 
+When a `SITE_county_day.csv.subgroups.csv` sidecar is available, the runner
+checks that the subgroup counts reconcile to the county-day export and fits
+temperature interactions for age (65+ versus 18–64), sex (female versus male),
+and race (Black versus recorded non-Black). Black versus White is a race
+sensitivity. Unknown values are excluded from the corresponding contrast.
+Both groups share the lag 0–5 basis and temperature contrast and can have
+different humidity and calendar associations and county intercepts. The
+offset fit uses the log of each group's ICU admissions and requires a positive
+denominator in that group. The count fit includes eligible days with zero
+subgroup admissions.
+
+`subgroup_site_estimates.csv` and `subgroup_pooled_estimates.csv` give each
+within-group ratio and the direct interaction (target group's temperature
+ratio divided by the reference group's). Site intervals account for same-day
+dependence between groups and counties and serial dependence over 14 days.
+The pooled intervals use REML with modified Hartung–Knapp. The estimates are
+exploratory and intervals are nominal. Fit errors and missing inputs appear
+in `subgroup_model_status.csv`.
+
 1. `00_install_or_restore_packages.R`: installs missing required R packages into the project-local library.
 2. `01_build_ohca_cohort.R`: builds adult ICU OHCA hospitalizations using present-on-admission cardiac arrest diagnosis codes and applies hospital-aware county assignment.
 3. `01b_ohca_ed_death_never_icu.R`: counts OHCA-diagnosis patients who arrived to the ED, stayed only in ED locations, died there, and never reached ICU.
