@@ -87,14 +87,17 @@ collapse_pathway <- function(x) {
   paste(x, collapse = " -> ")
 }
 
+aim1_args <- commandArgs(trailingOnly = TRUE)
+aim1_export <- length(aim1_args) == 2L && aim1_args[[1L]] == "--aim1-export"
 config <- load_project_config(repo_root)
+if (aim1_export) config$site_name <- Sys.getenv("CLIF_SITE_NAME", unset = config$site_name)
 validate_site_name(config, repo_root)
 tables_path <- resolve_tables_path(config)
 file_type <- resolve_file_type(config)
 site_name <- config$site_name %||% Sys.getenv("CLIF_SITE_NAME", unset = "unknown_site")
 
 output_dir <- file.path(repo_root, "output", "intermediate", "cohorts", "ohca")
-dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
+if (!aim1_export) dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
 
 patient <- read_clif_table(tables_path, file_type, "patient")
 hospitalization <- read_clif_table(tables_path, file_type, "hospitalization")
@@ -265,6 +268,11 @@ excluded_pathway_summary <- ohca_unrestricted |>
 ohca <- ohca_unrestricted |>
   filter(.data$allowed_ohca_care_pathway, .data$icu_entry_within_24h)
 
+if (aim1_export) {
+  source(file.path(repo_root, "code", "aim1_hospital_county_export.R"))
+  export_aim1_counts(aim1_args[[2L]], all_icu, ohca, adt_min, repo_root, config)
+  quit(save = "no")
+}
 ohca <- apply_site_county_assignment(ohca, repo_root, config)
 
 respiratory <- read_clif_table(tables_path, file_type, "respiratory_support", required = FALSE)

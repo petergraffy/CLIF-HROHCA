@@ -36,6 +36,42 @@ Rscript code/00_install_or_restore_packages.R
 
 ## Site Scripts
 
+### Aim 1 hospital-county pilot
+
+Run the cohort exporter at each site using its CLIF tables and local configuration.
+The optional `CLIF_SITE_NAME` and `CLIF_TABLES_PATH` environment variables allow
+an explicit site and tables path for the export. Return the county-day CSV and
+its accompanying audit CSV. Both contain aggregate counts.
+
+```bash
+Rscript code/01_build_ohca_cohort.R --aim1-export output/final/aim1/SITE_county_day.csv
+Rscript code/run_aim1.R output/final/aim1/models output/final/aim1/*_county_day.csv
+```
+
+The export assigns the county of the first ICU hospital using `adt.hospital_id`
+and groups admissions by local source hospital admission date. Hospitals in the
+same county contribute to one county-day within each system. The audit counts
+unmatched and ambiguous identifiers and records single-county fallbacks.
+For the pilot, absent county-days between that county's first and last observed
+dates are treated as zero only when the system reports admissions that day.
+Validate periods of hospital reporting against site records before final inference.
+Missing weather stays missing, including when it interrupts a lag history.
+The count model on positive-ICU days uses the same denominator eligibility as
+the offset model. Set `AIM1_HOT_C` to evaluate a different hot temperature
+against the 20°C reference. Use a distinct output directory for each contrast.
+The support flag requires both temperatures within the fitted exposure range
+and at least ten model observations within 1°C of each temperature.
+
+Set `AIM1_PM25_CSV` to the county-day LGHAP CSV with columns `county_fips`
+(five digits), `date` (YYYY-MM-DD), and `pm25_ug_m3` (daily mean in µg/m³).
+The PM2.5 sensitivity compares adjustment for same-day PM2.5 with a baseline
+fit on the same complete days. Set `AIM1_HISTORICAL_DIR` to the directory with
+previous admission-rate exports to run the historical weather comparison.
+`fixest` enables the optional time-stratified conditional Poisson sensitivity.
+The runner writes site estimates, pooling and shared-date sensitivity results,
+coverage, reduced coefficients and covariance matrices, model status, and
+input checksums.
+
 1. `00_install_or_restore_packages.R`: installs missing required R packages into the project-local library.
 2. `01_build_ohca_cohort.R`: builds adult ICU OHCA hospitalizations using present-on-admission cardiac arrest diagnosis codes and applies hospital-aware county assignment.
 3. `01b_ohca_ed_death_never_icu.R`: counts OHCA-diagnosis patients who arrived to the ED, stayed only in ED locations, died there, and never reached ICU.

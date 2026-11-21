@@ -349,7 +349,7 @@ get_site_geography <- function(repo_root, config) {
   if (!file.exists(geography_path)) stop("Missing reference/clif_hospital_geography.csv")
 
   geo <- readr::read_csv(geography_path, show_col_types = FALSE, col_types = readr::cols(.default = readr::col_character())) |>
-    dplyr::filter(stringr::str_trim(.data$site_name) == site_name) |>
+    dplyr::filter(stringr::str_trim(.data$site_name) == .env$site_name) |>
     dplyr::mutate(
       hospital_id = normalize_hospital_id(.data$hospital_id),
       hospital_county_fips = normalize_county_fips(.data$hospital_county_fips)
