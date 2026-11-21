@@ -40,32 +40,66 @@ Rscript code/00_install_or_restore_packages.R
 
 Run the cohort exporter at each site using its CLIF tables and local configuration.
 The optional `CLIF_SITE_NAME` and `CLIF_TABLES_PATH` environment variables allow
-an explicit site and tables path for the export. Return the county-day CSV and
-its accompanying audit CSV. Both contain aggregate counts.
+an explicit site and tables path for the export. Return the six aggregate CSVs
+together. Keep the generated file names so the model runner can find the
+coverage calendar next to the county-day file.
 
 ```bash
 Rscript code/01_build_ohca_cohort.R --aim1-export output/final/aim1/SITE_county_day.csv
 Rscript code/run_aim1.R output/final/aim1/models output/final/aim1/*_county_day.csv
 ```
 
+| Site return | Contents |
+|---|---|
+| `SITE_county_day.csv` | Total adult ICU, probable OHCA and ED-pathway OHCA counts by hospital county and hospital admission date. |
+| `SITE_county_day.csv.audit.csv` | Cohort totals and counts of unresolved or ambiguous county assignments and single-county fallbacks. |
+| `SITE_county_day.csv.flow.csv` | Hospitalization and patient counts from the source extract through the study window, adult ICU cohort, cardiac-arrest screen, pathway and timing rules, and county assignment. Includes repeat hospitalizations among known patient IDs, missing patient IDs, ADT ICU segment counts, and the diagnostic table used. Timing anomalies are listed separately. |
+| `SITE_county_day.csv.coverage.csv` | A complete study calendar for each county in the crosswalk, with observed ICU counts and a `site_status` column for sites to complete from reporting records. |
+| `SITE_county_day.csv.transfers.csv` | Counts by county-day and admission source (`outside_hospital` for CLIF `osh`, `other_known`, or `unknown`). Includes acute-care transfer out, missing discharge information, and multiple or missing hospital IDs in ADT. Multiple ADT hospital IDs are a proxy for a within-system move. |
+| `SITE_county_day.csv.subgroups.csv` | Total adult ICU, probable OHCA and ED-pathway OHCA counts by county-day for each age, sex, race and ethnicity variable. Each variable partitions the cohort separately. Unknown categories are retained. |
+
 The export assigns the county of the first ICU hospital using `adt.hospital_id`
-and groups admissions by local source hospital admission date. Hospitals in the
-same county contribute to one county-day within each system. The audit counts
-unmatched and ambiguous identifiers and records single-county fallbacks.
-For the pilot, absent county-days between that county's first and last observed
-dates are treated as zero only when the system reports admissions that day.
-Validate periods of hospital reporting against site records before final inference.
-Missing weather stays missing, including when it interrupts a lag history.
+and groups admissions by local source hospital admission date. Hospitals in
+the same county contribute to one county-day within each system. The transfer
+and subgroup files also retain unresolved counties as missing FIPS values so
+their site totals can be reconciled against the assignment audit.
+
+For the coverage calendar, enter `reporting` for a confirmed complete day,
+`incomplete` for a partial feed, `not_reporting` for an interruption, or
+`inactive` if the hospital county was outside its operating or study coverage.
+Use a blank or `unknown` when coverage cannot be established. With a calendar,
+an empty county-day becomes zero only if explicitly marked `reporting`.
+Observed days marked incomplete, not reporting, or inactive are excluded from
+model fitting. Older count files without a calendar use the original pilot
+rule for inferred zeros. Missing weather can interrupt a lag history.
 The count model on positive-ICU days uses the same denominator eligibility as
 the offset model. Set `AIM1_HOT_C` to evaluate a different hot temperature
 against the 20°C reference. Use a distinct output directory for each contrast.
 The support flag requires both temperatures within the fitted exposure range
 and at least ten model observations within 1°C of each temperature.
+The primary contrast is 30°C versus 20°C over lag days 0–5. Additional fixed
+contrasts at 31–35°C use the same 20°C reference. The local-percentile model
+uses each site's 95th percentile and median instead. Check the contributing
+sites for each pooled result, particularly near the upper temperature tail.
 
-Set `AIM1_PM25_CSV` to the county-day LGHAP CSV with columns `county_fips`
-(five digits), `date` (YYYY-MM-DD), and `pm25_ug_m3` (daily mean in µg/m³).
-The PM2.5 sensitivity compares adjustment for same-day PM2.5 with a baseline
-fit on the same complete days. Set `AIM1_HISTORICAL_DIR` to the directory with
+`site_partial_lags.csv` and `pooled_partial_lags.csv` report cumulative
+associations through each lag day from the full lag 0–5 fits. The separate
+`lag_0_1` and `lag_0_2` models refit the OHCA count model using two and three lag
+days, respectively, with a separate coefficient for each lag. Their shorter
+history requirement can change the set of eligible model days.
+
+The standard Aim 1 runner includes the daily PM2.5 sensitivity using the
+2018–2024 LGHAP county-day Parquet files bundled in `exposome/lghap_pm25_county/`.
+It reads the years used by the study and joins PM2.5 by county and date.
+`AIM1_LGHAP_DIR` can override the bundled directory. Alternatively, set
+`AIM1_PM25_CSV` to a CSV with `county_fips` (five digits), `date` (YYYY-MM-DD),
+and `pm25_ug_m3`.
+
+`pm25_sensitivity.csv` reports the OHCA count model with a three-degree-of-freedom
+natural spline for same-day PM2.5 alongside its baseline fit on the same complete county-days.
+The pooled comparison uses the same sites in both models. Coverage and input
+checksums are recorded in `coverage.csv` and `input_manifest.csv`.
+Set `AIM1_HISTORICAL_DIR` to the directory with
 previous admission-rate exports to run the historical weather comparison.
 `fixest` enables the optional time-stratified conditional Poisson sensitivity.
 The runner writes site estimates, pooling and shared-date sensitivity results,

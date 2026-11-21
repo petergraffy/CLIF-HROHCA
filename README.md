@@ -47,6 +47,7 @@ The root `exposome/` folder contains county-level environmental inputs:
 - `daymet_county_rmax_2018_2024.parquet`
 - `no2_county_year.csv`
 - `pm25_county_year.csv`
+- `lghap_pm25_county/` daily county PM2.5 for the Aim 1 sensitivity
 
 These are county-level files and contain no CLIF patient information.
 

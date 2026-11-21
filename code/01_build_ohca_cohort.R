@@ -126,7 +126,7 @@ patient_min <- patient_min |>
     ethnicity_category = as.character(.data$ethnicity_category)
   )
 
-hosp <- hospitalization |>
+hosp_source <- hospitalization |>
   transmute(
     patient_id = as.character(.data$patient_id),
     hospitalization_id = as.character(.data$hospitalization_id),
@@ -136,7 +136,9 @@ hosp <- hospitalization |>
     discharge_category = if ("discharge_category" %in% names(hospitalization)) as.character(.data$discharge_category) else NA_character_,
     county_code = if ("county_code" %in% names(hospitalization)) as.character(.data$county_code) else NA_character_,
     state_code = if ("state_code" %in% names(hospitalization)) as.character(.data$state_code) else NA_character_
-  ) |>
+  )
+
+hosp <- hosp_source |>
   mutate(
     county_fips = normalize_county_fips(.data$county_code),
     admission_date = as_clif_date(.data$admission_dttm)
@@ -270,7 +272,9 @@ ohca <- ohca_unrestricted |>
 
 if (aim1_export) {
   source(file.path(repo_root, "code", "aim1_hospital_county_export.R"))
-  export_aim1_counts(aim1_args[[2L]], all_icu, ohca, adt_min, repo_root, config)
+  export_aim1_counts(aim1_args[[2L]], hosp_source, hosp, all_icu, ohca_unrestricted, ohca,
+                     adt_min, hospitalization, diagnosis_source, repo_root, config,
+                     as.Date(START_DATE), as.Date(END_DATE) - 1L)
   quit(save = "no")
 }
 ohca <- apply_site_county_assignment(ohca, repo_root, config)
