@@ -89,6 +89,38 @@ Rscript code/post_processing/pool_aim2.R output/final/aim2/pooled output/final/a
   Eligible live discharges are assumed alive and off IMV through day 28.
   Quasi-Poisson estimates include a ratio and standardized difference in
   mean days, with patient-clustered uncertainty.
+- **COVID-era exclusion sensitivity.** Exclude all index hospital admissions
+  from January 27, 2020 through May 11, 2023, inclusive, using the
+  [U.S. federal public health emergency dates](https://www.cms.gov/about-cms/what-we-do/emergency-response/past-emergencies/infectious-diseases).
+  Refit the ICU-entry Cox and 28-day VFD models with the same covariates and
+  temperature contrasts. Inclusion is based on hospital admission date and
+  follow-up for retained admissions runs under the usual day-28 rules.
+  Return the three aggregate `covid_era_*.csv` files with the primary exports.
+  These report cohort counts, model status, and estimates. The pooled
+  comparison uses identical supported sites for each full-period and
+  COVID-era exclusion contrast. Prehospital prognostic data were
+  unavailable for adjustment.
+- **24-hour SOFA landmark sensitivity.** Include patients with observed
+  index-stay follow-up beyond hour 24. Follow-up starts at hour 24 and ends
+  at the first hospital exit, censoring, or ICU day 28. For VFD, count up to
+  27 free days in that window using the same death and discharge rules. Clip
+  ventilation intervals to the landmark while allowing the usual six-hour
+  carry-forward. Compare the standard adjustment in the full landmark risk
+  set, the same model restricted to records with six observed SOFA domains,
+  and the restricted model with linear SOFA added. The models use the same
+  temperature contrasts as the primary analysis.
+- **SOFA measurement and exports.** Use the highest organ scores recorded from
+  ICU entry up to hour 24. The proxy uses arterial PaO₂ paired with documented
+  FiO₂ within an hour, MAP and recorded vasoactive doses, platelets, total
+  bilirubin, creatinine without urine output, and GCS without sedation
+  correction. It can sum the three GCS components charted together. A missing
+  organ domain leaves the total missing. The sensitivity is conditional on
+  survival in the index hospital, and first-day severity can be downstream of
+  temperature. Return the five aggregate `sofa_landmark_*.csv` files with
+  the primary exports. They give model estimates, fit status, landmark
+  coverage, coverage by domain, and counts by number of observed domains.
+  The pooling script compares the two complete-SOFA models using the same
+  supported sites for each endpoint and contrast.
 
 ```bash
 Rscript code/post_processing/plot_aim2_cif.R output/final/aim2/adjusted_cif output/final/aim2/SITE1 output/final/aim2/SITE2

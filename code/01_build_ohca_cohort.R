@@ -281,6 +281,7 @@ if (aim1_export) {
 ohca <- apply_site_county_assignment(ohca, repo_root, config)
 if (aim2_export) {
   source(file.path(repo_root, "code", "aim2_hospital_outcomes.R"))
+  source(file.path(repo_root, "code", "aim2_sofa_landmark.R"))
   run_aim2_site(export_args[[2L]], ohca, hosp_source, patient, diagnosis, adt_min,
                 diagnosis_source, tables_path, file_type, repo_root, site_name)
   quit(save = "no")

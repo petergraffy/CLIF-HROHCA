@@ -3,6 +3,7 @@ aim2_horizon <- 28
 aim2_temp_basis <- list(knots = c(10, 25), Boundary.knots = c(-40, 45))
 aim2_reference_c <- 20
 aim2_hot_temperatures <- 30:35
+aim2_covid_era <- as.Date(c("2020-01-27", "2023-05-11"))
 
 aim2_charlson <- function(cohort, hospitalizations, diagnosis, diagnosis_source) {
   index <- transmute(cohort, index_id = hospitalization_id, patient_id, index_start = admission_dttm,
@@ -118,7 +119,7 @@ aim2_exits <- function(cohort, patient, adt) {
     )
 }
 
-aim2_vfd <- function(cohort, respiratory, gap_hours = 6) {
+aim2_vfd <- function(cohort, respiratory, gap_hours = 6, start_day = 0) {
   support <- tibble(hospitalization_id = character(), n_support_records = integer(),
                     imv_hours = numeric(), last_support_imv = logical())
   if (!is.null(respiratory) && nrow(respiratory)) {
@@ -133,11 +134,13 @@ aim2_vfd <- function(cohort, respiratory, gap_hours = 6) {
              imv = device %in% c("imv", "vent", "invasive mechanical ventilation")) |>
       filter(recorded >= first_icu_in, recorded <= observed_end) |>
       group_by(hospitalization_id, recorded) |>
-      summarise(imv = any(imv), observed_end = first(observed_end), .groups = "drop_last") |>
+      summarise(imv = any(imv), observed_end = first(observed_end),
+                start = first(first_icu_in) + start_day * 86400, .groups = "drop_last") |>
       arrange(recorded, .by_group = TRUE) |>
       mutate(interval_end = pmin(recorded + gap_hours * 3600, lead(recorded), observed_end, na.rm = TRUE)) |>
+      filter(recorded >= start | interval_end > start) |>
       summarise(n_support_records = n(),
-                imv_hours = sum(as.numeric(difftime(interval_end, recorded, units = "hours"))[imv]),
+                imv_hours = sum(as.numeric(difftime(interval_end, pmax(recorded, start), units = "hours"))[imv]),
                 last_support_imv = last(imv), .groups = "drop")
   }
   cohort |>
@@ -155,7 +158,7 @@ aim2_vfd <- function(cohort, respiratory, gap_hours = 6) {
       ),
       vfd = case_when(
         vfd_status == "hospital_death_28d" ~ 0,
-        vfd_status == "vfd_observable_with_discharge_assumption" ~ pmax(0, aim2_horizon - imv_hours / 24),
+        vfd_status == "vfd_observable_with_discharge_assumption" ~ pmax(0, aim2_horizon - start_day - imv_hours / 24),
         TRUE ~ NA_real_
       )
     )
@@ -292,52 +295,49 @@ aim2_vfd_estimates <- function(d, rhs) {
   }))
 }
 
-run_aim2_site <- function(output_dir, cohort, hospitalizations, patient, diagnosis, adt,
-                          diagnosis_source, tables_path, file_type, root, site) {
-  for (package in c("comorbidity", "survival", "sandwich")) {
-    if (!requireNamespace(package, quietly = TRUE)) stop("Install the Aim 2 dependency ", package)
-  }
-  stopifnot(!anyDuplicated(cohort$hospitalization_id))
-  cohort <- aim2_charlson(cohort, hospitalizations, diagnosis, diagnosis_source) |>
-    aim2_exposures(root) |>
-    aim2_exits(patient, adt)
-  respiratory <- read_clif_table(tables_path, file_type, "respiratory_support",
-                                  columns = c("hospitalization_id", "recorded_dttm", "device_category"),
-                                  required = FALSE)
-  cohort <- aim2_vfd(cohort, respiratory)
-  d <- aim2_model_data(cohort)
+aim2_exit_endpoints <- c("death", "hospice", "live_discharge")
+
+aim2_adjustment <- function(d) {
   baseline <- c("age_at_admission", "sex", "race", "ethnicity", "charlson", "year", "season_sin", "season_cos")
-  choose_rhs <- function(x) {
-    kept <- baseline[vapply(x[baseline], n_distinct, integer(1)) > 1L]
-    c("temp_1", "temp_2", "temp_3", "splines::ns(rmax_mean_pct, df = 3)", kept)
+  kept <- baseline[vapply(d[baseline], n_distinct, integer(1)) > 1L]
+  c("temp_1", "temp_2", "temp_3", "splines::ns(rmax_mean_pct, df = 3)", kept)
+}
+
+aim2_exit_models <- function(d, model_terms) {
+  endpoints <- c(aim2_exit_endpoints, "death_or_hospice")
+  fit_exits <- function(data, terms) {
+    lapply(terms, function(rhs) {
+      setNames(lapply(endpoints, function(endpoint)
+        tryCatch(withCallingHandlers(aim2_cause_specific(data, endpoint, rhs),
+                                     warning = function(w) stop(conditionMessage(w))), error = identity)), endpoints)
+    })
   }
-  endpoints <- c("death", "hospice", "live_discharge")
-  all_endpoints <- c(endpoints, "death_or_hospice")
-  fit_exits <- function(data, rhs) {
-    results <- lapply(all_endpoints, function(endpoint)
-      tryCatch(withCallingHandlers(aim2_cause_specific(data, endpoint, rhs),
-                                   warning = function(w) stop(conditionMessage(w))), error = identity))
-    setNames(results, all_endpoints)
-  }
-  rhs <- choose_rhs(d)
-  unpenalized <- fit_exits(d, rhs)
-  separation <- vapply(unpenalized, function(x)
-    inherits(x, "error") && grepl("coefficient may be infinite", conditionMessage(x), fixed = TRUE), logical(1))
-  demographic_terms <- intersect(c("sex", "race", "ethnicity"), rhs)
-  cox_method <- "unpenalized"
-  cox_data <- d
-  all_fits <- unpenalized
-  if (any(separation) && length(demographic_terms)) {
-    # Use the same fallback for every exit so the hazards can be combined.
-    # The temperature and other continuous covariates stay unpenalized.
+  unpenalized <- fit_exits(d, model_terms)
+  separation <- any(vapply(unlist(unpenalized, recursive = FALSE), function(x)
+    inherits(x, "error") && grepl("coefficient may be infinite", conditionMessage(x), fixed = TRUE), logical(1)))
+  demographic_terms <- intersect(c("sex", "race", "ethnicity"), model_terms[[1]])
+  method <- "unpenalized"
+  fits <- unpenalized
+  if (separation && length(demographic_terms)) {
+    # Use the same fallback across endpoints and matched model specifications.
     demographics <- model.matrix(reformulate(demographic_terms), data = d)[, -1L, drop = FALSE]
     colnames(demographics) <- paste0("demographic_", seq_len(ncol(demographics)))
-    cox_data <- bind_cols(d, as.data.frame(demographics))
+    d <- bind_cols(d, as.data.frame(demographics))
     penalty <- paste0("ridge(", paste(colnames(demographics), collapse = ", "),
                       ", theta = 1, scale = FALSE)")
-    all_fits <- fit_exits(cox_data, c(setdiff(rhs, demographic_terms), penalty))
-    cox_method <- "ridge_demographic_nuisance"
+    fits <- fit_exits(d, lapply(model_terms, function(rhs) c(setdiff(rhs, demographic_terms), penalty)))
+    method <- "ridge_demographic_nuisance"
   }
+  list(data = d, method = method, unpenalized = unpenalized, fits = fits)
+}
+
+aim2_fit_outcomes <- function(d, check_ph = TRUE) {
+  endpoints <- aim2_exit_endpoints
+  all_endpoints <- c(endpoints, "death_or_hospice")
+  cox <- aim2_exit_models(d, list(primary = aim2_adjustment(d)))
+  cox_method <- cox$method
+  unpenalized <- cox$unpenalized$primary
+  all_fits <- cox$fits$primary
   fits <- list()
   estimates <- list()
   status <- list()
@@ -356,7 +356,7 @@ run_aim2_site <- function(output_dir, cohort, hospitalizations, patient, diagnos
       cbind(aim2_contrast(outcome$fit, vcov(outcome$fit), nrow(d), outcome$n_events,
                           endpoint, "cause_specific_cox", d, hot), method = cox_method)
     }))
-    diagnostics <- tryCatch(survival::cox.zph(outcome$fit)$table, error = function(e) NULL)
+    diagnostics <- if (check_ph) tryCatch(survival::cox.zph(outcome$fit)$table, error = function(e) NULL)
     if (!is.null(diagnostics)) {
       valid <- is.finite(diagnostics[, "chisq"]) & diagnostics[, "chisq"] >= 0
       ph[[endpoint]] <- data.frame(
@@ -367,14 +367,56 @@ run_aim2_site <- function(output_dir, cohort, hospitalizations, patient, diagnos
   }
 
   d_vfd <- droplevels(filter(d, !is.na(vfd)))
-  vfd <- tryCatch(aim2_vfd_estimates(d_vfd, choose_rhs(d_vfd)), error = identity)
+  vfd <- tryCatch(aim2_vfd_estimates(d_vfd, aim2_adjustment(d_vfd)), error = identity)
   status$vfd <- tibble(endpoint = "ventilator_free_days", method = "quasi_poisson",
                        status = if (inherits(vfd, "error")) conditionMessage(vfd) else "ok")
   if (!inherits(vfd, "error")) estimates$vfd <- vfd
 
+  list(estimates = bind_rows(estimates), status = bind_rows(status), fits = fits,
+       cox = cox, vfd_data = d_vfd, ph = bind_rows(ph))
+}
+
+aim2_covid_sensitivity <- function(d) {
+  stopifnot(!anyNA(d$admission_date))
+  in_era <- between(d$admission_date, aim2_covid_era[1], aim2_covid_era[2])
+  retained <- droplevels(d[!in_era, , drop = FALSE])
+  fit <- aim2_fit_outcomes(retained, check_ph = FALSE)
+  audit <- tibble(
+    excluded_start = aim2_covid_era[1], excluded_end = aim2_covid_era[2],
+    primary_cox_n = nrow(d), excluded_cox_n = sum(in_era),
+    before_era_cox_n = sum(d$admission_date < aim2_covid_era[1]),
+    after_era_cox_n = sum(d$admission_date > aim2_covid_era[2]),
+    retained_cox_n = nrow(retained), primary_vfd_n = sum(!is.na(d$vfd)),
+    excluded_vfd_n = sum(in_era & !is.na(d$vfd)), retained_vfd_n = nrow(fit$vfd_data),
+    retained_deaths = sum(retained$event == "death"),
+    retained_hospice = sum(retained$event == "hospice"),
+    retained_live_discharge = sum(retained$event == "live_discharge")
+  )
+  list(covid_era_estimates = fit$estimates, covid_era_model_status = fit$status,
+       covid_era_coverage = audit)
+}
+
+run_aim2_site <- function(output_dir, cohort, hospitalizations, patient, diagnosis, adt,
+                          diagnosis_source, tables_path, file_type, root, site) {
+  for (package in c("comorbidity", "survival", "sandwich")) {
+    if (!requireNamespace(package, quietly = TRUE)) stop("Install the Aim 2 dependency ", package)
+  }
+  stopifnot(!anyDuplicated(cohort$hospitalization_id))
+  cohort <- aim2_charlson(cohort, hospitalizations, diagnosis, diagnosis_source) |>
+    aim2_exposures(root) |>
+    aim2_exits(patient, adt)
+  respiratory <- read_clif_table(tables_path, file_type, "respiratory_support",
+                                  columns = c("hospitalization_id", "recorded_dttm", "device_category"),
+                                  required = FALSE)
+  cohort <- aim2_vfd(cohort, respiratory)
+  d <- aim2_model_data(cohort)
+  endpoints <- aim2_exit_endpoints
+  primary <- aim2_fit_outcomes(d)
+  d_vfd <- primary$vfd_data
+  fits <- primary$fits
   incidence <- data.frame()
   if (all(endpoints %in% names(fits))) {
-    incidence <- aim2_standardized_exits(cox_data, fits, endpoints)
+    incidence <- aim2_standardized_exits(primary$cox$data, fits, endpoints)
   }
   d$aj_event <- factor(d$event, levels = c("censored", endpoints))
   aj <- survival::survfit(survival::Surv(time, aj_event) ~ 1, data = d,
@@ -396,11 +438,12 @@ run_aim2_site <- function(output_dir, cohort, hospitalizations, patient, diagnos
               prior_admission_found = sum(d$prior_admission_found),
               vfd_deaths_zero = sum(d_vfd$event == "death"),
               vfd_mean = mean(d_vfd$vfd), mean_imv_days_measured = mean(d_vfd$imv_hours / 24, na.rm = TRUE))
-  tables <- list(estimates = bind_rows(estimates), model_status = bind_rows(status),
+  tables <- list(estimates = primary$estimates, model_status = primary$status,
                  coverage = audit, vfd_status = count(cohort, vfd_status, name = "n"),
-                 proportional_hazards = bind_rows(ph), standardized_cif = incidence,
+                 proportional_hazards = primary$ph, standardized_cif = incidence,
                  standardized_day28 = if (nrow(incidence)) filter(incidence, day == aim2_horizon) else incidence,
                  aalen_johansen = observed)
+  tables <- c(tables, aim2_covid_sensitivity(d), aim2_run_sofa_landmark(d, respiratory, tables_path, file_type))
   dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
   for (name in names(tables)) {
     table <- tables[[name]]
@@ -410,11 +453,15 @@ run_aim2_site <- function(output_dir, cohort, hospitalizations, patient, diagnos
   writeLines(c("Time origin: first ICU admission; horizon: 28 days; all events are from the index hospital stay.",
                "Exposure: preceding-day assigned-county Tmax and maximum relative humidity.",
                paste("Diagnosis table:", diagnosis_source),
-               paste("Model adjustment:", paste(choose_rhs(d), collapse = " + ")),
-               paste("Cox method:", cox_method),
+               paste("Model adjustment:", paste(aim2_adjustment(d), collapse = " + ")),
+               paste("Cox method:", primary$cox$method),
                "VFD: zero for index-stay death by day 28; otherwise 28 minus documented cumulative IMV days.",
                "Six-hour respiratory carry-forward, clipped at the next documentation, observed end, and day 28.",
                "Early eligible live discharges are assumed alive and free from IMV to day 28.",
                "Adjusted day-28 event probabilities are exploratory point estimates.",
+               "Prehospital prognostic data were unavailable for adjustment.",
+               sprintf("COVID-era sensitivity excludes hospital admissions from %s through %s, inclusive, using the US federal public health emergency dates.",
+                       aim2_covid_era[1], aim2_covid_era[2]),
+               aim2_sofa_specification,
                capture.output(sessionInfo())), file.path(output_dir, "specification.txt"))
 }
